@@ -109,6 +109,15 @@
     width:64px; background:var(--stone-2); border:1px solid var(--line); color:var(--birch);
     padding:5px 7px; border-radius:6px; font-family:'JetBrains Mono',monospace; font-size:13px;
   }
+  .gerencia-panel .campo select{
+    background:var(--stone-2); border:1px solid var(--line); color:var(--birch);
+    padding:5px 7px; border-radius:6px; font-family:'Inter'; font-size:12.5px;
+  }
+  .gerencia-panel .campo button{
+    background:var(--stone-2); border:1px solid var(--line); color:var(--birch);
+    border-radius:6px; width:26px; height:26px; cursor:pointer; font-size:13px;
+  }
+  .gerencia-panel .campo button:hover{ border-color:var(--ember); }
   .gerencia-panel button{
     background:var(--ember); color:var(--charred-oak); border:none; border-radius:6px;
     padding:6px 14px; font-weight:600; cursor:pointer; font-size:12.5px;
@@ -597,21 +606,49 @@
     if (configGlobal.error) { panel.style.display = 'none'; return; }
     panel.style.display = 'flex';
     panel.className = 'gerencia-panel';
+    const modoTC = configGlobal.tipo_cambio_modo === 'manual' ? 'manual' : 'auto';
     panel.innerHTML = `
       <span class="titulo">Panel de gerencia</span>
       <div class="campo">Markup <input id="cfgMarkup" type="number" step="0.01" value="${(configGlobal.markup_default_pct*100).toFixed(0)}"> %</div>
       <div class="campo">Piso margen <input id="cfgPiso" type="number" step="0.01" value="${(configGlobal.margen_minimo_pct*100).toFixed(0)}"> %</div>
       <div class="campo">Techo margen <input id="cfgTecho" type="number" step="0.01" value="${configGlobal.margen_maximo_pct!=null?(configGlobal.margen_maximo_pct*100).toFixed(0):''}" placeholder="sin límite"> %</div>
+      <div class="campo">
+        Tipo cambio €→US$
+        <select id="cfgModoTC">
+          <option value="auto" ${modoTC==='auto'?'selected':''}>Automático</option>
+          <option value="manual" ${modoTC==='manual'?'selected':''}>Manual</option>
+        </select>
+        <input id="cfgTCManual" type="number" step="0.0001" style="width:76px;" value="${configGlobal.tipo_cambio_eur_usd||''}" ${modoTC==='manual'?'':'disabled'}>
+        <button id="cfgRefrescarTC" type="button" title="Actualizar ahora">↻</button>
+      </div>
+      <span id="cfgTCVigente" style="font-size:11px; color:var(--birch-dim);">vigente: ${configGlobal.tipo_cambio_efectivo!=null?Number(configGlobal.tipo_cambio_efectivo).toFixed(4):'—'}</span>
       <button id="cfgGuardar">Guardar</button>
       <span class="saved-msg" id="cfgMsg"></span>
     `;
+    document.getElementById('cfgModoTC').onchange = (e) => {
+      document.getElementById('cfgTCManual').disabled = e.target.value !== 'manual';
+    };
+    document.getElementById('cfgRefrescarTC').onclick = async () => {
+      const btn = document.getElementById('cfgRefrescarTC');
+      btn.disabled = true;
+      const res = await apiPost({ action: 'refrescar_tipo_cambio', pin: sesion.pin });
+      btn.disabled = false;
+      if (res.error) { alert(res.error); return; }
+      document.getElementById('cfgTCVigente').textContent = 'vigente: ' + Number(res.tipo_cambio).toFixed(4) + ' (recién actualizado)';
+    };
     document.getElementById('cfgGuardar').onclick = async () => {
       const cambios = {
         markup_default_pct: Number(document.getElementById('cfgMarkup').value) / 100,
         margen_minimo_pct: Number(document.getElementById('cfgPiso').value) / 100,
+        tipo_cambio_modo: document.getElementById('cfgModoTC').value,
       };
       const techoVal = document.getElementById('cfgTecho').value;
       if (techoVal !== '') cambios.margen_maximo_pct = Number(techoVal) / 100;
+      if (cambios.tipo_cambio_modo === 'manual') {
+        const tcVal = document.getElementById('cfgTCManual').value;
+        if (!tcVal) { document.getElementById('cfgMsg').textContent = 'Ingresá un valor manual de tipo de cambio.'; return; }
+        cambios.tipo_cambio_eur_usd = Number(tcVal);
+      }
       const msg = document.getElementById('cfgMsg');
       msg.textContent = 'Guardando…';
       const res = await apiPost({ action: 'actualizar_config', cambios, pin: sesion.pin });
