@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Kokkai — Cotizador de Saunas Auroom</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --charred-oak:#1c1512;
+    --stone:#241b17;
+    --stone-2:#2e231d;
+    --birch:#efe4d2;
+    --birch-dim:#c9bba3;
+    --ember:#c4622d;
+    --ember-bright:#e07a3e;
+    --pine:#4c6656;
+    --pine-bright:#6b8a76;
+    --rust-warn:#a8402a;
+    --line:#3a2d25;
+    --radius:10px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--charred-oak);
+    color:var(--birch);
+    font-family:'Inter',system-ui,sans-serif;
+    min-height:100vh;
+    -webkit-font-smoothing:antialiased;
+  }
+  ::selection{background:var(--ember); color:var(--charred-oak);}
+  a{color:inherit;}
+
+  .topbar{
+    display:flex; align-items:baseline; justify-content:space-between;
+    padding:22px 28px 18px; border-bottom:1px solid var(--line);
+    flex-wrap:wrap; gap:10px;
+  }
+  .brand{font-family:'Fraunces',serif; font-size:22px; font-weight:600; letter-spacing:0.2px;}
+  .brand small{display:block; font-family:'Inter'; font-size:11px; font-weight:500; letter-spacing:1.5px; text-transform:uppercase; color:var(--ember); margin-top:2px;}
+  .vendor-badge{
+    display:flex; align-items:center; gap:8px; font-size:13px; color:var(--birch-dim);
+  }
+  .vendor-badge input{
+    background:var(--stone-2); border:1px solid var(--line); color:var(--birch);
+    padding:6px 10px; border-radius:6px; font-family:'Inter'; font-size:13px; width:200px;
+  }
+
+  .layout{
+    display:grid;
+    grid-template-columns: 1.6fr 1fr;
+    gap:0;
+    align-items:start;
+  }
+  @media (max-width: 980px){ .layout{ grid-template-columns:1fr; } }
+
+  .main{ padding:24px 28px 120px; }
+  .section-label{
+    font-family:'Inter'; font-size:11px; font-weight:700; letter-spacing:1.6px; text-transform:uppercase;
+    color:var(--ember); margin: 28px 0 12px;
+  }
+  .section-label:first-child{ margin-top:0; }
+
+  /* --- Filtros de categoría --- */
+  .cat-tabs{ display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+  .cat-tab{
+    background:var(--stone-2); border:1px solid var(--line); color:var(--birch-dim);
+    padding:7px 14px; border-radius:20px; font-size:13px; cursor:pointer; transition:all .15s;
+  }
+  .cat-tab.active{ background:var(--ember); border-color:var(--ember); color:var(--charred-oak); font-weight:600; }
+  .cat-tab:hover:not(.active){ border-color:var(--ember); color:var(--birch); }
+
+  /* --- Grilla de modelos --- */
+  .model-grid{
+    display:grid; grid-template-columns:repeat(auto-fill, minmax(190px,1fr)); gap:14px;
+  }
+  .model-card{
+    background:var(--stone); border:1px solid var(--line); border-radius:var(--radius);
+    overflow:hidden; cursor:pointer; transition:transform .15s, border-color .15s;
+  }
+  .model-card:hover{ border-color:var(--ember); transform:translateY(-2px); }
+  .model-card.selected{ border-color:var(--ember-bright); box-shadow:0 0 0 1px var(--ember-bright); }
+  .model-card .photo{ width:100%; aspect-ratio:4/3; object-fit:cover; background:var(--stone-2); display:block; }
+  .model-card .info{ padding:10px 12px 12px; }
+  .model-card .fam{ font-size:10px; letter-spacing:1px; text-transform:uppercase; color:var(--ember); font-weight:700; }
+  .model-card .nombre{ font-family:'Fraunces',serif; font-size:15px; margin:3px 0 4px; line-height:1.2; }
+  .model-card .precio{ font-family:'JetBrains Mono',monospace; font-size:12.5px; color:var(--birch-dim); }
+
+  /* --- Ficha del modelo elegido --- */
+  .ficha{
+    display:flex; gap:18px; background:var(--stone); border:1px solid var(--line);
+    border-radius:var(--radius); padding:18px; margin-bottom:8px;
+  }
+  .ficha img{ width:150px; height:120px; object-fit:cover; border-radius:8px; flex-shrink:0; background:var(--stone-2); }
+  .ficha h2{ font-family:'Fraunces',serif; font-weight:600; font-size:24px; margin:0 0 4px; }
+  .ficha .meta{ color:var(--birch-dim); font-size:13px; line-height:1.5; }
+  .ficha .base-precio{ font-family:'JetBrains Mono',monospace; color:var(--ember-bright); font-size:15px; margin-top:8px; }
+
+  /* --- Gadgets --- */
+  .gadget-group{ margin-bottom:6px; }
+  .gadget-group h4{
+    font-size:11px; text-transform:uppercase; letter-spacing:1.2px; color:var(--birch-dim);
+    font-weight:600; margin:16px 0 8px;
+  }
+  .gadget-row{
+    display:flex; align-items:center; justify-content:space-between; gap:12px;
+    padding:10px 12px; border:1px solid var(--line); border-radius:8px; margin-bottom:6px;
+    background:var(--stone); cursor:pointer; transition:border-color .15s;
+  }
+  .gadget-row:hover{ border-color:var(--birch-dim); }
+  .gadget-row.checked{ border-color:var(--pine-bright); background:#25322a; }
+  .gadget-row .left{ display:flex; align-items:center; gap:10px; }
+  .gadget-row input[type=checkbox]{ width:17px; height:17px; accent-color:var(--pine-bright); cursor:pointer; }
+  .gadget-row .nombre{ font-size:13.5px; }
+  .gadget-row .nombre small{ display:block; color:var(--birch-dim); font-size:11px; margin-top:1px; }
+  .gadget-row .precio{ font-family:'JetBrains Mono',monospace; font-size:13px; color:var(--birch-dim); white-space:nowrap; }
+  .gadget-row.checked .precio{ color:var(--pine-bright); }
+
+  .colocacion-box{
+    display:flex; align-items:flex-start; gap:12px; background:var(--stone-2);
+    border:1px dashed var(--ember); border-radius:8px; padding:14px; margin-top:18px;
+  }
+  .colocacion-box input{ width:17px; height:17px; margin-top:2px; accent-color:var(--ember); cursor:pointer; }
+  .colocacion-box .txt{ font-size:13px; line-height:1.5; color:var(--birch-dim); }
+  .colocacion-box .txt b{ color:var(--birch); }
+
+  /* --- Panel resumen (derecha, sticky) --- */
+  .summary{
+    position:sticky; top:0; align-self:start; height:100vh; overflow-y:auto;
+    background:var(--stone); border-left:1px solid var(--line); padding:24px 26px 40px;
+  }
+  @media (max-width: 980px){ .summary{ position:static; height:auto; border-left:none; border-top:1px solid var(--line);} }
+  .summary h3{ font-family:'Fraunces',serif; font-size:17px; margin:0 0 16px; }
+  .empty-state{ color:var(--birch-dim); font-size:13.5px; line-height:1.6; }
+
+  .line{ display:flex; justify-content:space-between; align-items:baseline; padding:6px 0; font-size:13.5px; }
+  .line .lbl{ color:var(--birch-dim); }
+  .line .val{ font-family:'JetBrains Mono',monospace; }
+  .line.selected-item .lbl{ color:var(--birch); }
+  .divider{ height:1px; background:var(--line); margin:12px 0; }
+  .line.total{ font-size:16px; padding-top:10px; }
+  .line.total .lbl{ color:var(--birch); font-weight:600; }
+  .line.total .val{ color:var(--ember-bright); font-weight:700; font-size:19px; }
+
+  /* Gauge de margen — elemento distintivo */
+  .gauge-wrap{ margin:20px 0 6px; }
+  .gauge-label{ display:flex; justify-content:space-between; font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--birch-dim); margin-bottom:6px; }
+  .gauge{ height:10px; border-radius:6px; background:var(--stone-2); overflow:hidden; position:relative; border:1px solid var(--line); }
+  .gauge .floor-mark{ position:absolute; top:0; bottom:0; width:2px; background:var(--birch); opacity:.6; }
+  .gauge .fill{ height:100%; border-radius:6px; transition:width .3s, background .3s; }
+  .gauge-pct{ font-family:'JetBrains Mono',monospace; font-size:13px; margin-top:6px; }
+
+  .warn-box{
+    background:#3a201a; border:1px solid var(--rust-warn); color:#f0c4b3;
+    border-radius:8px; padding:10px 12px; font-size:12.5px; margin-top:10px; line-height:1.5;
+  }
+
+  .btn{
+    width:100%; padding:13px; border-radius:8px; border:none; font-family:'Inter'; font-weight:600;
+    font-size:14px; cursor:pointer; margin-top:14px; transition:opacity .15s;
+  }
+  .btn:disabled{ opacity:.4; cursor:not-allowed; }
+  .btn-primary{ background:var(--ember); color:var(--charred-oak); }
+  .btn-primary:hover:not(:disabled){ background:var(--ember-bright); }
+  .btn-secondary{ background:transparent; border:1px solid var(--pine-bright); color:var(--pine-bright); }
+  .btn-secondary:hover:not(:disabled){ background:#1e2c23; }
+
+  .status-msg{ font-size:13px; margin-top:10px; padding:10px 12px; border-radius:8px; }
+  .status-ok{ background:#1e2c23; border:1px solid var(--pine-bright); color:var(--pine-bright); }
+  .status-err{ background:#3a201a; border:1px solid var(--rust-warn); color:#f0c4b3; }
+
+  .loading{ text-align:center; padding:60px 0; color:var(--birch-dim); }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">Kokkai <small>Cotizador de Saunas Auroom</small></div>
+  <div class="vendor-badge">
+    Vendedor:
+    <input id="vendedorInput" type="email" placeholder="tu@kokkai.ar">
+  </div>
+</div>
+
+<div class="layout">
+  <div class="main">
+    <div id="modelSection">
+      <div class="section-label">1 — Elegí el modelo</div>
+      <div class="cat-tabs" id="catTabs"></div>
+      <div class="model-grid" id="modelGrid"><div class="loading">Cargando catálogo…</div></div>
+    </div>
+
+    <div id="fichaSection" style="display:none;">
+      <div class="section-label">2 — Configurá el sauna</div>
+      <div class="ficha" id="fichaBox"></div>
+      <div id="gadgetsBox"></div>
+      <div class="colocacion-box">
+        <input type="checkbox" id="colocacionCheck">
+        <div class="txt">
+          <b>Incluir colocación</b> — instalación eléctrica llave en mano de la acometida trifásica
+          próxima al sauna (deja la alimentación lista y protegida para conectar el calefactor;
+          no arma el sauna en sí). Siempre 15% del valor del sauna, <b>sin IVA</b>.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="summary" id="summaryPanel">
+    <h3>Detalle de la cotización</h3>
+    <div class="empty-state" id="summaryEmpty">Elegí un modelo para empezar a armar la cotización. Cada gadget que sumes va a aparecer acá como línea aparte — nunca un total ciego.</div>
+    <div id="summaryContent" style="display:none;"></div>
+  </div>
+</div>
+
+<script src="config.js"></script>
+<script>
+(function(){
+  let modelos = [];
+  let gadgetsDisponibles = [];
+  let modeloSeleccionado = null;
+  let gadgetsSeleccionados = {}; // id -> {gadget, cantidad}
+  let incluyeColocacion = false;
+  let catFiltro = 'todas';
+  let calcActual = null;
+
+  const modelGrid = document.getElementById('modelGrid');
+  const catTabs = document.getElementById('catTabs');
+  const fichaSection = document.getElementById('fichaSection');
+  const fichaBox = document.getElementById('fichaBox');
+  const gadgetsBox = document.getElementById('gadgetsBox');
+  const colocacionCheck = document.getElementById('colocacionCheck');
+  const summaryEmpty = document.getElementById('summaryEmpty');
+  const summaryContent = document.getElementById('summaryContent');
+  const vendedorInput = document.getElementById('vendedorInput');
+
+  vendedorInput.value = localStorage.getItem('kokkai_vendedor_email') || '';
+  vendedorInput.addEventListener('change', () => localStorage.setItem('kokkai_vendedor_email', vendedorInput.value));
+
+  const fmtEUR = n => '€ ' + Number(n||0).toLocaleString('es-AR', {maximumFractionDigits:0});
+  const fmtUSD = n => 'US$ ' + Number(n||0).toLocaleString('es-AR', {maximumFractionDigits:0});
+  const fmtPct = n => (Number(n||0)*100).toFixed(1) + '%';
+
+  async function api(action, params) {
+    if (params) {
+      const qs = new URLSearchParams(params).toString();
+      const res = await fetch(`${APPS_SCRIPT_URL}?action=${action}&${qs}`);
+      return res.json();
+    }
+  }
+  async function apiPost(body) {
+    const res = await fetch(APPS_SCRIPT_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'text/plain;charset=utf-8'}, // evita preflight CORS contra Apps Script
+      body: JSON.stringify(body)
+    });
+    return res.json();
+  }
+
+  async function init() {
+    const data = await api('modelos');
+    if (data.error) { modelGrid.innerHTML = `<div class="loading">Error cargando catálogo: ${data.error}</div>`; return; }
+    modelos = data;
+    renderCatTabs();
+    renderModelGrid();
+  }
+
+  function renderCatTabs() {
+    const cats = ['todas', ...new Set(modelos.map(m => m.categoria))];
+    catTabs.innerHTML = cats.map(c =>
+      `<div class="cat-tab ${c===catFiltro?'active':''}" data-cat="${c}">${c==='todas'?'Todas':c}</div>`
+    ).join('');
+    catTabs.querySelectorAll('.cat-tab').forEach(el => {
+      el.onclick = () => { catFiltro = el.dataset.cat; renderCatTabs(); renderModelGrid(); };
+    });
+  }
+
+  function renderModelGrid() {
+    const list = catFiltro === 'todas' ? modelos : modelos.filter(m => m.categoria === catFiltro);
+    modelGrid.innerHTML = list.map(m => `
+      <div class="model-card ${modeloSeleccionado && modeloSeleccionado.id===m.id?'selected':''}" data-id="${m.id}">
+        <img class="photo" src="" data-familia="${m.familia}" alt="${m.modelo}" onerror="this.style.display='none'">
+        <div class="info">
+          <div class="fam">${m.familia}</div>
+          <div class="nombre">${m.modelo}</div>
+          <div class="precio">${fmtEUR(m.precio_base_eur)} EXW</div>
+        </div>
+      </div>
+    `).join('');
+    modelGrid.querySelectorAll('.model-card').forEach(el => {
+      el.onclick = () => seleccionarModelo(Number(el.dataset.id));
+      const img = el.querySelector('img');
+      loadFoto(img.dataset.familia).then(url => { if (url) img.src = url; });
+    });
+  }
+
+  const fotosCache = {};
+  async function loadFoto(familia) {
+    if (fotosCache[familia] !== undefined) return fotosCache[familia];
+    fotosCache[familia] = null; // evita pedidos duplicados en paralelo
+    try {
+      const ficha = await api('ficha', {modelo_id: modelos.find(m=>m.familia===familia).id});
+      fotosCache[familia] = ficha.foto_url || null;
+    } catch(e) { fotosCache[familia] = null; }
+    return fotosCache[familia];
+  }
+
+  async function seleccionarModelo(id) {
+    modeloSeleccionado = modelos.find(m => m.id === id);
+    gadgetsSeleccionados = {};
+    incluyeColocacion = false;
+    colocacionCheck.checked = false;
+    renderModelGrid();
+
+    fichaSection.style.display = 'block';
+    fichaBox.innerHTML = `<div class="loading" style="padding:20px;">Cargando ficha…</div>`;
+    fichaSection.scrollIntoView({behavior:'smooth', block:'start'});
+
+    const ficha = await api('ficha', {modelo_id: id});
+    gadgetsDisponibles = ficha.gadgets || [];
+    renderFicha(ficha);
+    renderGadgets();
+    recalcular();
+  }
+
+  function renderFicha(ficha) {
+    const m = ficha.modelo;
+    fichaBox.innerHTML = `
+      <img src="${ficha.foto_url||''}" onerror="this.style.opacity=0">
+      <div>
+        <h2>${m.modelo}</h2>
+        <div class="meta">${m.familia} · ${m.categoria}${m.tamano!=='-'?' · Talle '+m.tamano:''}${m.material_color!=='-'?' · '+m.material_color:''}</div>
+        <div class="base-precio">${fmtEUR(m.precio_base_eur)} EXW (sin heater, sin extras)</div>
+        ${m.notas ? `<div class="meta" style="margin-top:6px;">${m.notas}</div>` : ''}
+      </div>
+    `;
+  }
+
+  function renderGadgets() {
+    const grupos = {};
+    gadgetsDisponibles.forEach(g => {
+      const key = g.categoria || 'otros';
+      (grupos[key] = grupos[key] || []).push(g);
+    });
+    const nombresCategoria = {
+      calor:'Calefacción', control:'Control units', accesorio:'Piedras y accesorios',
+      confort:'Confort', estructura:'Estructura', accesorio_modelo:'Accesorios del modelo',
+      extra_linea:'Extras de línea', otros:'Otros'
+    };
+    gadgetsBox.innerHTML = Object.entries(grupos).map(([cat, items]) => `
+      <div class="gadget-group">
+        <h4>${nombresCategoria[cat]||cat}</h4>
+        ${items.map(g => `
+          <div class="gadget-row" data-id="${g.id}">
+            <div class="left">
+              <input type="checkbox" data-id="${g.id}">
+              <div class="nombre">${g.nombre}${g.notas?`<small>${g.notas}</small>`:''}</div>
+            </div>
+            <div class="precio">${g.precio_eur!=null ? '+ '+fmtEUR(g.precio_eur) : 'consultar'}</div>
+          </div>
+        `).join('')}
+      </div>
+    `).join('');
+    gadgetsBox.querySelectorAll('.gadget-row').forEach(row => {
+      const id = row.dataset.id;
+      const cb = row.querySelector('input');
+      const toggle = () => {
+        cb.checked = !cb.checked;
+        const g = gadgetsDisponibles.find(x => String(x.id)===id);
+        if (cb.checked) gadgetsSeleccionados[id] = {gadget:g, cantidad:1};
+        else delete gadgetsSeleccionados[id];
+        row.classList.toggle('checked', cb.checked);
+        recalcular();
+      };
+      row.onclick = (e) => { if (e.target !== cb) toggle(); else { row.classList.toggle('checked', cb.checked); if(cb.checked){const g=gadgetsDisponibles.find(x=>String(x.id)===id); gadgetsSeleccionados[id]={gadget:g,cantidad:1};} else delete gadgetsSeleccionados[id]; recalcular(); } };
+    });
+  }
+
+  colocacionCheck.addEventListener('change', () => { incluyeColocacion = colocacionCheck.checked; recalcular(); });
+
+  async function recalcular() {
+    if (!modeloSeleccionado) return;
+    const input = {
+      modelo_id: modeloSeleccionado.id,
+      gadget_ids: Object.keys(gadgetsSeleccionados),
+      incluye_colocacion: incluyeColocacion
+    };
+    const calc = await apiPost({action:'cotizar', input});
+    if (calc.error) { summaryContent.innerHTML = `<div class="status-msg status-err">${calc.error}</div>`; return; }
+    calcActual = calc;
+    renderSummary(calc);
+  }
+
+  function renderSummary(c) {
+    summaryEmpty.style.display = 'none';
+    summaryContent.style.display = 'block';
+
+    const gadgetLines = c.gadgets_seleccionados.map(s => `
+      <div class="line selected-item">
+        <span class="lbl">${s.gadget.nombre}${s.cantidad>1?' ×'+s.cantidad:''}</span>
+        <span class="val">${fmtEUR(s.subtotal_eur)}</span>
+      </div>
+    `).join('');
+
+    const margenColor = c.margen_bajo_el_piso ? 'var(--rust-warn)' : (c.margen_bruto_pct >= c.margen_minimo_pct*1.15 ? 'var(--pine-bright)' : 'var(--ember-bright)');
+    const gaugePct = Math.min(100, Math.max(0, c.margen_bruto_pct*100));
+    const floorPct = c.margen_minimo_pct*100;
+
+    summaryContent.innerHTML = `
+      <div class="line"><span class="lbl">${modeloSeleccionado.modelo}</span><span class="val">${fmtEUR(modeloSeleccionado.precio_base_eur)}</span></div>
+      ${gadgetLines}
+      <div class="divider"></div>
+      <div class="line"><span class="lbl">FOB total (EUR)</span><span class="val">${fmtEUR(c.fob_eur)}</span></div>
+      <div class="line"><span class="lbl">Tipo de cambio</span><span class="val">${c.tipo_cambio}</span></div>
+      <div class="line"><span class="lbl">FOB (USD)</span><span class="val">${fmtUSD(c.fob_usd)}</span></div>
+      <div class="line"><span class="lbl">Costo nacionalizado (+${fmtPct(c.coef_nacionalizacion_pct)})</span><span class="val">${fmtUSD(c.costo_nacionalizado_usd)}</span></div>
+      <div class="divider"></div>
+      <div class="line"><span class="lbl">PVP (markup ${fmtPct(c.markup_pct)})</span><span class="val">${fmtUSD(c.pvp_usd)}</span></div>
+      <div class="line"><span class="lbl">Margen bruto</span><span class="val">${fmtUSD(c.margen_bruto_usd)} (${fmtPct(c.margen_bruto_pct)})</span></div>
+
+      <div class="gauge-wrap">
+        <div class="gauge-label"><span>Margen bruto</span><span>piso ${fmtPct(c.margen_minimo_pct)}</span></div>
+        <div class="gauge">
+          <div class="floor-mark" style="left:${floorPct}%"></div>
+          <div class="fill" style="width:${gaugePct}%; background:${margenColor};"></div>
+        </div>
+        <div class="gauge-pct" style="color:${margenColor}">${fmtPct(c.margen_bruto_pct)}</div>
+      </div>
+      ${c.margen_bajo_el_piso ? `<div class="warn-box">Margen por debajo del piso de ${fmtPct(c.margen_minimo_pct)}. Guardar esta cotización va a requerir aprobación de gerencia.</div>` : ''}
+
+      <div class="divider"></div>
+      <div class="line"><span class="lbl">IIBB</span><span class="val">− ${fmtUSD(c.iibb_usd)}</span></div>
+      <div class="line"><span class="lbl">Comisión arquitecto</span><span class="val">− ${fmtUSD(c.com_arquitecto_usd)}</span></div>
+      <div class="line"><span class="lbl">Comisión vendedor</span><span class="val">− ${fmtUSD(c.com_vendedor_usd)}</span></div>
+      <div class="line"><span class="lbl">Margen neto final</span><span class="val">${fmtUSD(c.margen_neto_usd)} (${fmtPct(c.margen_neto_pct)})</span></div>
+      <div class="divider"></div>
+      <div class="line"><span class="lbl">IVA (${fmtPct(c.iva_pct)})</span><span class="val">+ ${fmtUSD(c.iva_usd)}</span></div>
+      ${c.incluye_colocacion ? `<div class="line"><span class="lbl">Colocación (${fmtPct(c.colocacion_pct)}, sin IVA)</span><span class="val">+ ${fmtUSD(c.colocacion_usd)}</span></div>` : ''}
+      <div class="line total"><span class="lbl">Precio final al cliente</span><span class="val">${fmtUSD(c.precio_final_usd)}</span></div>
+
+      <input id="clienteInput" type="text" placeholder="Nombre del cliente" style="width:100%; margin-top:16px; padding:10px; background:var(--stone-2); border:1px solid var(--line); border-radius:8px; color:var(--birch); font-family:'Inter'; font-size:13px;">
+      <button class="btn btn-primary" id="guardarBtn">Guardar cotización</button>
+      <div id="statusMsg"></div>
+    `;
+
+    document.getElementById('guardarBtn').onclick = guardarCotizacion;
+  }
+
+  async function guardarCotizacion() {
+    const statusMsg = document.getElementById('statusMsg');
+    const cliente = document.getElementById('clienteInput').value.trim();
+    const vendedor = vendedorInput.value.trim();
+    if (!vendedor) { statusMsg.innerHTML = `<div class="status-msg status-err">Cargá tu mail de vendedor arriba a la derecha antes de guardar.</div>`; return; }
+    if (!cliente) { statusMsg.innerHTML = `<div class="status-msg status-err">Cargá el nombre del cliente.</div>`; return; }
+
+    const btn = document.getElementById('guardarBtn');
+    btn.disabled = true; btn.textContent = 'Guardando…';
+
+    const input = {
+      modelo_id: modeloSeleccionado.id,
+      gadget_ids: Object.keys(gadgetsSeleccionados),
+      incluye_colocacion: incluyeColocacion,
+      cliente: cliente,
+      estado: 'enviada'
+    };
+    try {
+      const res = await apiPost({action:'guardar', input, userEmail: vendedor});
+      if (res.error) throw new Error(res.error);
+      statusMsg.innerHTML = `<div class="status-msg status-ok">Cotización guardada (ID ${res.id.slice(0,8)}…). Para convertirla en venta, gerencia la aprueba desde el Portal.</div>`;
+    } catch(e) {
+      statusMsg.innerHTML = `<div class="status-msg status-err">${e.message}</div>`;
+    }
+    btn.disabled = false; btn.textContent = 'Guardar cotización';
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
