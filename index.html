@@ -48,6 +48,30 @@
     background:var(--stone-2); border:1px solid var(--line); color:var(--birch);
     padding:6px 10px; border-radius:6px; font-family:'Inter'; font-size:13px; width:200px;
   }
+  .rol-badge{
+    font-size:11px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase;
+    padding:4px 9px; border-radius:12px;
+  }
+  .rol-badge.gerencia{ background:var(--ember); color:var(--charred-oak); }
+  .rol-badge.vendedor{ background:var(--pine); color:var(--birch); }
+  .rol-badge.desconocido{ background:var(--stone-2); color:var(--birch-dim); border:1px solid var(--line); }
+
+  .gerencia-panel{
+    background:#241d15; border-bottom:1px solid var(--ember); padding:14px 28px;
+    display:flex; align-items:center; gap:20px; flex-wrap:wrap; font-size:13px;
+  }
+  .gerencia-panel .titulo{ font-weight:700; color:var(--ember-bright); text-transform:uppercase; font-size:11px; letter-spacing:1px; }
+  .gerencia-panel .campo{ display:flex; align-items:center; gap:6px; color:var(--birch-dim); }
+  .gerencia-panel .campo input{
+    width:64px; background:var(--stone-2); border:1px solid var(--line); color:var(--birch);
+    padding:5px 7px; border-radius:6px; font-family:'JetBrains Mono',monospace; font-size:13px;
+  }
+  .gerencia-panel button{
+    background:var(--ember); color:var(--charred-oak); border:none; border-radius:6px;
+    padding:6px 14px; font-weight:600; cursor:pointer; font-size:12.5px;
+  }
+  .gerencia-panel button:hover{ background:var(--ember-bright); }
+  .gerencia-panel .saved-msg{ font-size:12px; color:var(--pine-bright); }
 
   .layout{
     display:grid;
@@ -182,8 +206,11 @@
   <div class="vendor-badge">
     Vendedor:
     <input id="vendedorInput" type="email" placeholder="tu@kokkai.ar">
+    <span id="rolBadge"></span>
   </div>
 </div>
+
+<div id="gerenciaPanel" style="display:none;"></div>
 
 <div class="layout">
   <div class="main">
@@ -237,7 +264,66 @@
   const vendedorInput = document.getElementById('vendedorInput');
 
   vendedorInput.value = localStorage.getItem('kokkai_vendedor_email') || '';
-  vendedorInput.addEventListener('change', () => localStorage.setItem('kokkai_vendedor_email', vendedorInput.value));
+  vendedorInput.addEventListener('change', () => {
+    localStorage.setItem('kokkai_vendedor_email', vendedorInput.value);
+    checkRol();
+  });
+  if (vendedorInput.value) checkRol();
+
+  async function checkRol() {
+    const email = vendedorInput.value.trim();
+    const rolBadge = document.getElementById('rolBadge');
+    const gerenciaPanel = document.getElementById('gerenciaPanel');
+    if (!email) {
+      rolActual = null;
+      rolBadge.innerHTML = '';
+      gerenciaPanel.style.display = 'none';
+      if (calcActual) recalcular();
+      return;
+    }
+    const r = await api('rol', { email });
+    rolActual = r.rol || null;
+    if (rolActual === 'gerencia') {
+      rolBadge.innerHTML = `<span class="rol-badge gerencia">Gerencia</span>`;
+      await renderGerenciaPanel();
+    } else if (rolActual) {
+      rolBadge.innerHTML = `<span class="rol-badge vendedor">${rolActual}</span>`;
+      gerenciaPanel.style.display = 'none';
+    } else {
+      rolBadge.innerHTML = `<span class="rol-badge desconocido">mail no reconocido</span>`;
+      gerenciaPanel.style.display = 'none';
+    }
+    if (calcActual !== null || modeloSeleccionado) recalcular();
+  }
+
+  async function renderGerenciaPanel() {
+    const panel = document.getElementById('gerenciaPanel');
+    configGlobal = await api('config_global', { email: vendedorInput.value.trim() });
+    if (configGlobal.error) { panel.style.display = 'none'; return; }
+    panel.style.display = 'flex';
+    panel.className = 'gerencia-panel';
+    panel.innerHTML = `
+      <span class="titulo">Panel de gerencia</span>
+      <div class="campo">Markup <input id="cfgMarkup" type="number" step="0.01" value="${(configGlobal.markup_default_pct*100).toFixed(0)}"> %</div>
+      <div class="campo">Piso margen <input id="cfgPiso" type="number" step="0.01" value="${(configGlobal.margen_minimo_pct*100).toFixed(0)}"> %</div>
+      <div class="campo">Techo margen <input id="cfgTecho" type="number" step="0.01" value="${configGlobal.margen_maximo_pct!=null?(configGlobal.margen_maximo_pct*100).toFixed(0):''}" placeholder="sin límite"> %</div>
+      <button id="cfgGuardar">Guardar</button>
+      <span class="saved-msg" id="cfgMsg"></span>
+    `;
+    document.getElementById('cfgGuardar').onclick = async () => {
+      const cambios = {
+        markup_default_pct: Number(document.getElementById('cfgMarkup').value) / 100,
+        margen_minimo_pct: Number(document.getElementById('cfgPiso').value) / 100,
+      };
+      const techoVal = document.getElementById('cfgTecho').value;
+      if (techoVal !== '') cambios.margen_maximo_pct = Number(techoVal) / 100;
+      const msg = document.getElementById('cfgMsg');
+      msg.textContent = 'Guardando…';
+      const res = await apiPost({ action: 'actualizar_config', cambios, userEmail: vendedorInput.value.trim() });
+      if (res.error) { msg.textContent = res.error; msg.style.color = 'var(--rust-warn)'; }
+      else { msg.textContent = 'Guardado ✓'; msg.style.color = 'var(--pine-bright)'; configGlobal = res; if (calcActual) recalcular(); }
+    };
+  }
 
   const fmtEUR = n => '€ ' + Number(n||0).toLocaleString('es-AR', {maximumFractionDigits:0});
   const fmtUSD = n => 'US$ ' + Number(n||0).toLocaleString('es-AR', {maximumFractionDigits:0});
@@ -258,6 +344,8 @@
   }
 
   let fotosPorFamilia = {};
+  let rolActual = null;
+  let configGlobal = null;
 
   async function init() {
     // Un solo pedido para modelos y otro para fotos (en paralelo), en vez de
@@ -380,13 +468,14 @@
       gadget_ids: Object.keys(gadgetsSeleccionados),
       incluye_colocacion: incluyeColocacion
     };
-    const calc = await apiPost({action:'cotizar', input});
+    const calc = await apiPost({action:'cotizar', input, userEmail: vendedorInput.value.trim()});
     if (calc.error) { summaryContent.innerHTML = `<div class="status-msg status-err">${calc.error}</div>`; return; }
     calcActual = calc;
-    renderSummary(calc);
+    if (calc.vista === 'gerencia') renderSummaryGerencia(calc);
+    else renderSummaryVendedor(calc);
   }
 
-  function renderSummary(c) {
+  function renderSummaryGerencia(c) {
     summaryEmpty.style.display = 'none';
     summaryContent.style.display = 'block';
 
@@ -438,6 +527,33 @@
       <div id="statusMsg"></div>
     `;
 
+    document.getElementById('guardarBtn').onclick = guardarCotizacion;
+  }
+
+  function renderSummaryVendedor(c) {
+    summaryEmpty.style.display = 'none';
+    summaryContent.style.display = 'block';
+
+    const gadgetLines = c.gadgets_seleccionados.map(s => `
+      <div class="line selected-item">
+        <span class="lbl">✓ ${s.gadget ? s.gadget.nombre : s.nombre}${s.cantidad>1?' ×'+s.cantidad:''}</span>
+      </div>
+    `).join('');
+
+    summaryContent.innerHTML = `
+      <div class="line selected-item"><span class="lbl">${modeloSeleccionado.modelo}</span></div>
+      ${gadgetLines}
+      <div class="divider"></div>
+      <div class="line"><span class="lbl">Precio del sauna</span><span class="val">${fmtUSD(c.pvp_usd)}</span></div>
+      ${c.incluye_colocacion ? `<div class="line"><span class="lbl">Colocación (${fmtPct(c.colocacion_pct)}, sin IVA)</span><span class="val">+ ${fmtUSD(c.colocacion_usd)}</span></div>` : ''}
+      <div class="line"><span class="lbl">IVA (${fmtPct(c.iva_pct)})</span><span class="val">+ ${fmtUSD(c.iva_usd)}</span></div>
+      <div class="divider"></div>
+      <div class="line total"><span class="lbl">Precio final al cliente</span><span class="val">${fmtUSD(c.precio_final_usd)}</span></div>
+
+      <input id="clienteInput" type="text" placeholder="Nombre del cliente" style="width:100%; margin-top:16px; padding:10px; background:var(--stone-2); border:1px solid var(--line); border-radius:8px; color:var(--birch); font-family:'Inter'; font-size:13px;">
+      <button class="btn btn-primary" id="guardarBtn">Guardar cotización</button>
+      <div id="statusMsg"></div>
+    `;
     document.getElementById('guardarBtn').onclick = guardarCotizacion;
   }
 
