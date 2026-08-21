@@ -250,6 +250,25 @@
 
   .loading{ text-align:center; padding:60px 0; color:var(--birch-dim); }
 
+  /* --- Cliente y condiciones --- */
+  .cliente-field{ margin-bottom:8px; }
+  .cliente-field label{ display:block; font-size:11px; text-transform:uppercase; letter-spacing:.5px; color:var(--birch-dim); margin-bottom:4px; }
+  .cliente-field select{
+    width:100%; background:var(--stone-2); border:1px solid var(--line); color:var(--birch);
+    padding:8px 10px; border-radius:8px; font-family:'Inter'; font-size:13px;
+  }
+  .cliente-row{ display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:8px; }
+  .cliente-row input{
+    background:var(--stone-2); border:1px solid var(--line); color:var(--birch);
+    padding:8px 10px; border-radius:8px; font-family:'Inter'; font-size:13px; width:100%;
+  }
+  .btn-mini{
+    background:var(--pine-bright); color:var(--charred-oak); border:none; border-radius:6px;
+    padding:6px 12px; font-size:12px; font-weight:700; cursor:pointer; margin-top:2px;
+  }
+  .btn-mini:hover{ opacity:.85; }
+  .mini-msg{ font-size:11.5px; color:var(--birch-dim); margin-left:8px; }
+
   /* --- Presupuesto imprimible --- */
   #printArea{ display:none; }
   @media print{
@@ -257,8 +276,11 @@
     #printArea, #printArea *{ visibility:visible; }
     #printArea{ display:block; position:absolute; top:0; left:0; width:100%; padding:30px; background:#fff; color:#1c1512; }
     #printArea .p-header{ display:flex; justify-content:space-between; align-items:baseline; border-bottom:2px solid #1c1512; padding-bottom:14px; margin-bottom:20px; }
-    #printArea .p-brand{ font-family:'Fraunces',serif; font-size:24px; font-weight:600; }
-    #printArea .p-meta{ font-size:12px; color:#555; text-align:right; }
+    #printArea .p-brand{ font-family:'Fraunces',serif; font-size:26px; font-weight:600; letter-spacing:2px; }
+    #printArea .p-brand-sub{ display:block; font-family:'Inter',sans-serif; font-size:10px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:#c4622d; margin-top:2px; }
+    #printArea .p-meta{ font-size:12px; color:#555; text-align:right; line-height:1.6; }
+    #printArea .p-client-grid{ display:grid; grid-template-columns:1fr 1fr; gap:6px 20px; margin-bottom:6px; font-size:13px; }
+    #printArea .p-client-lbl{ display:block; font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:#999; }
     #printArea .p-row{ display:flex; justify-content:space-between; padding:7px 0; font-size:13.5px; border-bottom:1px solid #ddd; }
     #printArea .p-row.total{ font-weight:700; font-size:16px; border-bottom:2px solid #1c1512; border-top:2px solid #1c1512; margin-top:6px; padding:10px 0; }
     #printArea .p-note{ font-size:11px; color:#777; margin-top:4px; }
@@ -505,8 +527,10 @@
     const familia = (c.modelo && c.modelo.familia) || (modeloSeleccionado && modeloSeleccionado.familia) || '';
     const modeloNombre = modeloNombreOverride || (c.modelo && c.modelo.modelo) || (c.modelo) || (modeloSeleccionado && modeloSeleccionado.modelo) || '';
     const categoria = (c.modelo && c.modelo.categoria) || (modeloSeleccionado && modeloSeleccionado.categoria) || '';
-    const clienteNombre = clienteNombreOverride || c.cliente || (document.getElementById('clienteInput') ? document.getElementById('clienteInput').value : '') || '';
-    const fotoUrl = fotosPorFamilia[familia] || '';
+    const clienteNombre = clienteNombreOverride || c.cliente || clienteSeleccionado.nombre || '';
+    const clienteCuit = c.cliente_cuit || clienteSeleccionado.cuit || '';
+    const clienteTelefono = c.cliente_telefono || clienteSeleccionado.telefono || '';
+    const fotoUrl = fotoParaModelo({ familia, modelo: modeloNombre }) || fotosPorFamilia[familia] || '';
     const paginaProducto = PAGINA_PRODUCTO[familia] || '';
     const gadgetNames = (c.gadgets_detalle || c.gadgets_seleccionados || []).map(g => {
       const nombre = g.nombre || (g.gadget && g.gadget.nombre) || '';
@@ -515,6 +539,11 @@
     });
     const totalSinIva = c.pvp_usd + (c.incluye_colocacion ? c.colocacion_usd : 0);
     const fecha = new Date().toLocaleDateString('es-AR');
+    const validezDias = c.validez_dias || datosEntrega.validez_dias || 7;
+    const nombreObra = c.nombre_obra || datosEntrega.nombre_obra || '';
+    const condicionesPago = c.condiciones_pago || datosEntrega.condiciones_pago || '';
+    const lugarEntrega = c.lugar_entrega || datosEntrega.lugar_entrega || '';
+    const plazoEntrega = c.plazo_entrega || datosEntrega.plazo_entrega || '';
 
     // Ficha técnica eléctrica de referencia (6kW = calefactor más común de la gama HUUM DROP).
     // Si el sauna cotizado lleva un calefactor de otra potencia, esto es orientativo.
@@ -522,11 +551,21 @@
     try { specs = await api('colocacion_specs', { potencia_kw: 6 }); if (specs.error) specs = null; } catch(e) { specs = null; }
 
     const printArea = document.getElementById('printArea');
+    const numeroCot = c.id ? ('COT-' + c.id.slice(0,8).toUpperCase()) : 'BORRADOR (sin guardar)';
     printArea.innerHTML = `
       <div class="p-header">
-        <div class="p-brand">Kokkai — Saunas Auroom</div>
-        <div class="p-meta">Presupuesto<br>${fecha}${clienteNombre ? '<br>Cliente: '+clienteNombre : ''}</div>
+        <div class="p-brand">KOKKAI<span class="p-brand-sub">Saunas Auroom</span></div>
+        <div class="p-meta">Presupuesto N° ${numeroCot}<br>Fecha: ${fecha} · Válido por ${validezDias} días</div>
       </div>
+
+      ${(clienteNombre || nombreObra) ? `
+      <div class="p-section-title">Cliente</div>
+      <div class="p-client-grid">
+        <div><span class="p-client-lbl">Cliente</span>${clienteNombre || '—'}</div>
+        <div><span class="p-client-lbl">CUIT</span>${clienteCuit || '—'}</div>
+        <div><span class="p-client-lbl">Teléfono</span>${clienteTelefono || '—'}</div>
+        <div><span class="p-client-lbl">Obra</span>${nombreObra || '—'}</div>
+      </div>` : ''}
 
       <div class="p-product">
         ${fotoUrl ? `<img src="${fotoUrl}">` : ''}
@@ -544,6 +583,14 @@
       ${c.incluye_colocacion ? `<div class="p-row"><span>Colocación (instalación eléctrica, sin IVA)</span><span>${fmtUSD(c.colocacion_usd)}</span></div>` : ''}
       <div class="p-row total"><span>Total + IVA</span><span>${fmtUSD(totalSinIva)}</span></div>
       <div class="p-note">IVA (${fmtPct(c.iva_pct!=null?c.iva_pct:0.21)}) no incluido: ${fmtUSD(c.iva_usd)} — total con IVA ${fmtUSD(c.precio_final_usd)}</div>
+
+      ${(condicionesPago || lugarEntrega || plazoEntrega) ? `
+      <div class="p-section-title">Condiciones comerciales</div>
+      <div class="p-box">
+        ${condicionesPago ? `<b>Forma de pago:</b> ${condicionesPago}<br>` : ''}
+        ${plazoEntrega ? `<b>Plazo de entrega:</b> ${plazoEntrega}<br>` : ''}
+        ${lugarEntrega ? `<b>Lugar de entrega:</b> ${lugarEntrega}` : ''}
+      </div>` : ''}
 
       <div class="p-section-title">Requisitos de instalación</div>
       <div class="p-box">
@@ -567,7 +614,7 @@
         independiente de esta.
       </div>
 
-      <div class="p-footer">Presupuesto válido por 7 días. Precios en dólares estadounidenses, sujetos a variación del tipo de cambio.</div>
+      <div class="p-footer">Kokkai Thermo Wood · Presupuesto N° ${numeroCot} válido por ${validezDias} días desde la fecha de emisión. Precios en dólares estadounidenses, sujetos a variación del tipo de cambio.</div>
     `;
     window.print();
   }
@@ -692,8 +739,35 @@
     NORA:'https://auroomwellness.com/product/nora/', Velaqua:'https://auroomwellness.com/product/velaqua/',
     VelEira:'https://auroomwellness.com/product/veleira/',
   };
+  // Fotos por VARIANTE (no solo por familia) para modelos donde Wood/Glass
+  // se ven completamente distintos — sacadas de la galería real de cada
+  // producto en auroomwellness.com, verificadas una por una. Todavía solo
+  // cubre Emma y Libera (los dos modelos que ya se cotizaron); el resto de
+  // las líneas Wood/Glass (Cala, Baia, Mira, etc.) siguen usando la foto
+  // genérica de familia hasta que se verifiquen de la misma manera.
+  const FOTOS_VARIANTE = {
+    'Emma|wood': 'https://auroomwellness.com/wp-content/uploads/2024/08/auroom-indoor-sauna-emma-wood-lifestyle-720x480.jpg',
+    'Emma|glass': 'https://auroomwellness.com/wp-content/uploads/2022/10/emma-carter-2-720x450.jpg',
+    'Libera|wood': 'https://auroomwellness.com/wp-content/uploads/2024/07/libera-wood-interior-gym-wood-wall-thermo-aspen-200x200-auroom-web-720x509.jpg',
+    'Libera|glass': 'https://auroomwellness.com/wp-content/uploads/2019/12/libera-interior-fitness-glass-wall-aspen-200x200-auroom-720x509.jpeg',
+  };
+  function fotoParaModelo(modelo) {
+    if (!modelo) return '';
+    const nombreLower = (modelo.modelo || '').toLowerCase();
+    const variante = nombreLower.includes('glass') ? 'glass' : (nombreLower.includes('wood') ? 'wood' : null);
+    if (variante) {
+      const key = modelo.familia + '|' + variante;
+      if (FOTOS_VARIANTE[key]) return FOTOS_VARIANTE[key];
+    }
+    return fotosPorFamilia[modelo.familia] || '';
+  }
   let sesion = null; // {pin, nombre, rol} — se guarda en localStorage tras login exitoso
   let configGlobal = null;
+  let clientesCache = null;
+  let estudiosCache = null;
+  let clienteSeleccionado = {}; // {id, nombre, cuit, telefono, email}
+  let estudioSeleccionado = {}; // {id, nombre, contacto, telefono, comisionPctDefault}
+  let datosEntrega = { condiciones_pago:'', validez_dias:7, lugar_entrega:'', plazo_entrega:'', nombre_obra:'' };
 
   async function init() {
     // Un solo pedido para modelos y otro para fotos (en paralelo), en vez de
@@ -722,7 +796,7 @@
     const list = catFiltro === 'todas' ? modelos : modelos.filter(m => m.categoria === catFiltro);
     modelGrid.innerHTML = list.map(m => `
       <div class="model-card ${modeloSeleccionado && modeloSeleccionado.id===m.id?'selected':''}" data-id="${m.id}">
-        <img class="photo" src="" data-familia="${m.familia}" alt="${m.modelo}" onerror="this.style.display='none'">
+        <img class="photo" src="" data-id="${m.id}" alt="${m.modelo}" onerror="this.style.display='none'">
         <div class="info">
           <div class="fam">${m.familia}</div>
           <div class="nombre">${m.modelo}</div>
@@ -733,7 +807,8 @@
     modelGrid.querySelectorAll('.model-card').forEach(el => {
       el.onclick = () => seleccionarModelo(Number(el.dataset.id));
       const img = el.querySelector('img');
-      const url = fotosPorFamilia[img.dataset.familia];
+      const m = modelos.find(x => x.id === Number(img.dataset.id));
+      const url = fotoParaModelo(m);
       if (url) img.src = url; else img.style.display = 'none';
     });
   }
@@ -758,8 +833,9 @@
 
   function renderFicha(ficha) {
     const m = ficha.modelo;
+    const foto = fotoParaModelo(m) || ficha.foto_url || '';
     fichaBox.innerHTML = `
-      <img src="${ficha.foto_url||''}" onerror="this.style.opacity=0">
+      <img src="${foto}" onerror="this.style.opacity=0">
       <div>
         <h2>${m.modelo}</h2>
         <div class="meta">${m.familia} · ${m.categoria}${m.tamano!=='-'?' · Talle '+m.tamano:''}${m.material_color!=='-'?' · '+m.material_color:''}</div>
@@ -825,7 +901,7 @@
     else renderSummaryVendedor(calc);
   }
 
-  function renderSummaryGerencia(c) {
+  async function renderSummaryGerencia(c) {
     summaryEmpty.style.display = 'none';
     summaryContent.style.display = 'block';
 
@@ -839,6 +915,7 @@
     const margenColor = c.margen_bajo_el_piso ? 'var(--rust-warn)' : (c.margen_bruto_pct >= c.margen_minimo_pct*1.15 ? 'var(--pine-bright)' : 'var(--ember-bright)');
     const gaugePct = Math.min(100, Math.max(0, c.margen_bruto_pct*100));
     const floorPct = c.margen_minimo_pct*100;
+    const datosClienteHtml = await renderDatosCliente();
 
     summaryContent.innerHTML = `
       <div class="line"><span class="lbl">${modeloSeleccionado.modelo}</span><span class="val">${fmtEUR(modeloSeleccionado.precio_base_eur)}</span></div>
@@ -870,14 +947,15 @@
       <div class="divider"></div>
       ${bloquePrecioFinal(c)}
 
-      <input id="clienteInput" type="text" placeholder="Nombre del cliente" style="width:100%; margin-top:16px; padding:10px; background:var(--stone-2); border:1px solid var(--line); border-radius:8px; color:var(--birch); font-family:'Inter'; font-size:13px;">
+      ${datosClienteHtml}
       <button class="btn btn-primary" id="guardarBtn">Guardar cotización</button>
       <button class="btn btn-secondary" id="descargarBtn">Descargar presupuesto</button>
       <div id="statusMsg"></div>
     `;
 
+    wireDatosCliente();
     document.getElementById('guardarBtn').onclick = guardarCotizacion;
-    document.getElementById('descargarBtn').onclick = () => descargarPresupuesto(c, modeloSeleccionado.modelo);
+    document.getElementById('descargarBtn').onclick = () => { leerDatosEntregaDelForm(); descargarPresupuesto(c, modeloSeleccionado.modelo); };
   }
 
   /**
@@ -886,6 +964,162 @@
    * SIEMPRE se muestra SIN IVA, aclarando "+ IVA" -- el monto con IVA
    * incluido queda como referencia chica debajo, no como el número grande.
    */
+  /**
+   * Panel de "Cliente y condiciones" — reemplaza el input suelto de nombre
+   * por un picker real (cliente existente o alta rápida) + estudio de
+   * arquitectura opcional + condiciones comerciales. Se usa igual en la
+   * vista gerencia y en la vista vendedor -- estos datos no son costos.
+   */
+  async function cargarClientesYEstudios() {
+    if (clientesCache === null) clientesCache = await api('clientes');
+    if (estudiosCache === null) estudiosCache = await api('estudios');
+  }
+
+  async function renderDatosCliente() {
+    await cargarClientesYEstudios();
+    const clientes = Array.isArray(clientesCache) ? clientesCache : [];
+    const estudios = Array.isArray(estudiosCache) ? estudiosCache : [];
+
+    return `
+      <div class="section-label" style="margin-top:22px;">Cliente y condiciones</div>
+
+      <div class="cliente-field">
+        <label>Cliente</label>
+        <select id="clienteSelect">
+          <option value="">— Elegir cliente existente —</option>
+          ${clientes.map(c => `<option value="${c.id}">${c.nombre}${c.cuit?' ('+c.cuit+')':''}</option>`).join('')}
+          <option value="__nuevo__">+ Cliente nuevo</option>
+        </select>
+      </div>
+      <div id="clienteNuevoBox" style="display:none;">
+        <div class="cliente-row">
+          <input id="clienteNombreNuevo" placeholder="Nombre / Razón social *">
+          <input id="clienteCuitNuevo" placeholder="CUIT">
+        </div>
+        <div class="cliente-row">
+          <input id="clienteTelNuevo" placeholder="Teléfono">
+          <input id="clienteEmailNuevo" placeholder="Email">
+        </div>
+        <button type="button" class="btn-mini" id="clienteGuardarBtn">Guardar cliente</button>
+        <span class="mini-msg" id="clienteMsg"></span>
+      </div>
+
+      <div class="cliente-field" style="margin-top:12px;">
+        <label>Estudio de arquitectura (opcional)</label>
+        <select id="estudioSelect">
+          <option value="">— Sin estudio —</option>
+          ${estudios.map(e => `<option value="${e.id}">${e.nombre} (${e.comisionPctDefault}%)</option>`).join('')}
+          <option value="__nuevo__">+ Estudio nuevo</option>
+        </select>
+      </div>
+      <div id="estudioNuevoBox" style="display:none;">
+        <div class="cliente-row">
+          <input id="estudioNombreNuevo" placeholder="Nombre del estudio *">
+          <input id="estudioContactoNuevo" placeholder="Contacto">
+        </div>
+        <div class="cliente-row">
+          <input id="estudioTelNuevo" placeholder="Teléfono">
+          <input id="estudioComisionNuevo" type="number" step="0.5" placeholder="Comisión %" value="5">
+        </div>
+        <button type="button" class="btn-mini" id="estudioGuardarBtn">Guardar estudio</button>
+        <span class="mini-msg" id="estudioMsg"></span>
+      </div>
+
+      <div class="cliente-row" style="margin-top:12px;">
+        <input id="nombreObraInput" placeholder="Nombre de la obra (opcional)">
+        <input id="validezInput" type="number" placeholder="Validez (días)" value="${datosEntrega.validez_dias}">
+      </div>
+      <div class="cliente-row">
+        <input id="condPagoInput" placeholder="Condiciones de pago">
+        <input id="plazoEntregaInput" placeholder="Plazo de entrega">
+      </div>
+      <div class="cliente-row">
+        <input id="lugarEntregaInput" placeholder="Lugar de entrega" style="grid-column:1/-1;">
+      </div>
+    `;
+  }
+
+  function wireDatosCliente() {
+    const clienteSelect = document.getElementById('clienteSelect');
+    const clienteNuevoBox = document.getElementById('clienteNuevoBox');
+    clienteSelect.onchange = () => {
+      if (clienteSelect.value === '__nuevo__') {
+        clienteNuevoBox.style.display = 'block';
+        clienteSeleccionado = {};
+      } else {
+        clienteNuevoBox.style.display = 'none';
+        clienteSeleccionado = clientesCache.find(c => c.id === clienteSelect.value) || {};
+      }
+    };
+    document.getElementById('clienteGuardarBtn').onclick = async () => {
+      const nombre = document.getElementById('clienteNombreNuevo').value.trim();
+      const msg = document.getElementById('clienteMsg');
+      if (!nombre) { msg.textContent = 'Falta el nombre.'; return; }
+      const cliente = {
+        nombre, cuit: document.getElementById('clienteCuitNuevo').value.trim(),
+        telefono: document.getElementById('clienteTelNuevo').value.trim(),
+        email: document.getElementById('clienteEmailNuevo').value.trim(),
+      };
+      msg.textContent = 'Guardando…';
+      const res = await apiPost({ action: 'guardar_cliente', cliente, pin: sesion ? sesion.pin : '' });
+      if (res.error) { msg.textContent = res.error; return; }
+      cliente.id = res.id;
+      clientesCache.push(cliente);
+      clienteSeleccionado = cliente;
+      const opt = document.createElement('option');
+      opt.value = cliente.id; opt.textContent = cliente.nombre + (cliente.cuit ? ' ('+cliente.cuit+')' : '');
+      clienteSelect.insertBefore(opt, clienteSelect.lastElementChild);
+      clienteSelect.value = cliente.id;
+      clienteNuevoBox.style.display = 'none';
+      msg.textContent = '';
+    };
+
+    const estudioSelect = document.getElementById('estudioSelect');
+    const estudioNuevoBox = document.getElementById('estudioNuevoBox');
+    estudioSelect.onchange = () => {
+      if (estudioSelect.value === '__nuevo__') {
+        estudioNuevoBox.style.display = 'block';
+        estudioSeleccionado = {};
+      } else {
+        estudioNuevoBox.style.display = 'none';
+        estudioSeleccionado = estudiosCache.find(e => e.id === estudioSelect.value) || {};
+      }
+    };
+    document.getElementById('estudioGuardarBtn').onclick = async () => {
+      const nombre = document.getElementById('estudioNombreNuevo').value.trim();
+      const msg = document.getElementById('estudioMsg');
+      if (!nombre) { msg.textContent = 'Falta el nombre.'; return; }
+      const estudio = {
+        nombre, contacto: document.getElementById('estudioContactoNuevo').value.trim(),
+        telefono: document.getElementById('estudioTelNuevo').value.trim(),
+        comisionPctDefault: Number(document.getElementById('estudioComisionNuevo').value) || 5,
+      };
+      msg.textContent = 'Guardando…';
+      const res = await apiPost({ action: 'guardar_estudio', estudio, pin: sesion ? sesion.pin : '' });
+      if (res.error) { msg.textContent = res.error; return; }
+      estudio.id = res.id;
+      estudiosCache.push(estudio);
+      estudioSeleccionado = estudio;
+      const opt = document.createElement('option');
+      opt.value = estudio.id; opt.textContent = estudio.nombre + ' (' + estudio.comisionPctDefault + '%)';
+      estudioSelect.insertBefore(opt, estudioSelect.lastElementChild);
+      estudioSelect.value = estudio.id;
+      estudioNuevoBox.style.display = 'none';
+      msg.textContent = '';
+    };
+  }
+
+  function leerDatosEntregaDelForm() {
+    datosEntrega = {
+      nombre_obra: (document.getElementById('nombreObraInput')||{}).value || '',
+      validez_dias: Number((document.getElementById('validezInput')||{}).value) || 7,
+      condiciones_pago: (document.getElementById('condPagoInput')||{}).value || '',
+      plazo_entrega: (document.getElementById('plazoEntregaInput')||{}).value || '',
+      lugar_entrega: (document.getElementById('lugarEntregaInput')||{}).value || '',
+    };
+    return datosEntrega;
+  }
+
   function bloquePrecioFinal(c) {
     const totalSinIva = c.pvp_usd + (c.incluye_colocacion ? c.colocacion_usd : 0);
     return `
@@ -896,7 +1130,7 @@
     `;
   }
 
-  function renderSummaryVendedor(c) {
+  async function renderSummaryVendedor(c) {
     summaryEmpty.style.display = 'none';
     summaryContent.style.display = 'block';
 
@@ -906,6 +1140,8 @@
       </div>
     `).join('');
 
+    const datosClienteHtml = await renderDatosCliente();
+
     summaryContent.innerHTML = `
       <div class="line selected-item"><span class="lbl">${modeloSeleccionado.modelo}</span></div>
       ${gadgetLines}
@@ -913,29 +1149,68 @@
       <div class="line"><span class="lbl">Precio del sauna</span><span class="val">${fmtUSD(c.pvp_usd)}</span></div>
       ${bloquePrecioFinal(c)}
 
-      <input id="clienteInput" type="text" placeholder="Nombre del cliente" style="width:100%; margin-top:16px; padding:10px; background:var(--stone-2); border:1px solid var(--line); border-radius:8px; color:var(--birch); font-family:'Inter'; font-size:13px;">
+      ${datosClienteHtml}
       <button class="btn btn-primary" id="guardarBtn">Guardar cotización</button>
       <button class="btn btn-secondary" id="descargarBtn">Descargar presupuesto</button>
       <div id="statusMsg"></div>
     `;
+    wireDatosCliente();
     document.getElementById('guardarBtn').onclick = guardarCotizacion;
-    document.getElementById('descargarBtn').onclick = () => descargarPresupuesto(c, modeloSeleccionado.modelo);
+    document.getElementById('descargarBtn').onclick = () => { leerDatosEntregaDelForm(); descargarPresupuesto(c, modeloSeleccionado.modelo); };
   }
 
   async function guardarCotizacion() {
     const statusMsg = document.getElementById('statusMsg');
-    const cliente = document.getElementById('clienteInput').value.trim();
     if (!sesion) { statusMsg.innerHTML = `<div class="status-msg status-err">Iniciá sesión con tu PIN arriba a la derecha antes de guardar.</div>`; return; }
-    if (!cliente) { statusMsg.innerHTML = `<div class="status-msg status-err">Cargá el nombre del cliente.</div>`; return; }
+    if (!clienteSeleccionado.nombre && !(document.getElementById('clienteNombreNuevo') && document.getElementById('clienteNombreNuevo').value.trim())) {
+      statusMsg.innerHTML = `<div class="status-msg status-err">Elegí un cliente existente o cargá uno nuevo antes de guardar.</div>`; return;
+    }
+    leerDatosEntregaDelForm();
 
     const btn = document.getElementById('guardarBtn');
     btn.disabled = true; btn.textContent = 'Guardando…';
+
+    // Si cargaron un cliente nuevo pero no tocaron "Guardar cliente" antes de
+    // guardar la cotización, lo guardamos ahora mismo para no perder el dato.
+    const nombreNuevoEl = document.getElementById('clienteNombreNuevo');
+    if (!clienteSeleccionado.id && nombreNuevoEl && nombreNuevoEl.value.trim()) {
+      const cliente = {
+        nombre: nombreNuevoEl.value.trim(),
+        cuit: (document.getElementById('clienteCuitNuevo')||{}).value || '',
+        telefono: (document.getElementById('clienteTelNuevo')||{}).value || '',
+        email: (document.getElementById('clienteEmailNuevo')||{}).value || '',
+      };
+      const res = await apiPost({ action: 'guardar_cliente', cliente, pin: sesion.pin });
+      if (!res.error) { cliente.id = res.id; clienteSeleccionado = cliente; }
+    }
+    const nombreEstudioNuevoEl = document.getElementById('estudioNombreNuevo');
+    if (!estudioSeleccionado.id && nombreEstudioNuevoEl && nombreEstudioNuevoEl.value.trim()) {
+      const estudio = {
+        nombre: nombreEstudioNuevoEl.value.trim(),
+        contacto: (document.getElementById('estudioContactoNuevo')||{}).value || '',
+        telefono: (document.getElementById('estudioTelNuevo')||{}).value || '',
+        comisionPctDefault: Number((document.getElementById('estudioComisionNuevo')||{}).value) || 5,
+      };
+      const res = await apiPost({ action: 'guardar_estudio', estudio, pin: sesion.pin });
+      if (!res.error) { estudio.id = res.id; estudioSeleccionado = estudio; }
+    }
 
     const input = {
       modelo_id: modeloSeleccionado.id,
       gadget_ids: Object.keys(gadgetsSeleccionados),
       incluye_colocacion: incluyeColocacion,
-      cliente: cliente,
+      cliente: clienteSeleccionado.nombre || '',
+      cliente_id: clienteSeleccionado.id || null,
+      cliente_cuit: clienteSeleccionado.cuit || '',
+      cliente_telefono: clienteSeleccionado.telefono || '',
+      cliente_email: clienteSeleccionado.email || '',
+      estudio_id: estudioSeleccionado.id || null,
+      estudio_nombre: estudioSeleccionado.nombre || '',
+      nombre_obra: datosEntrega.nombre_obra,
+      validez_dias: datosEntrega.validez_dias,
+      condiciones_pago: datosEntrega.condiciones_pago,
+      lugar_entrega: datosEntrega.lugar_entrega,
+      plazo_entrega: datosEntrega.plazo_entrega,
       estado: 'enviada'
     };
     try {
