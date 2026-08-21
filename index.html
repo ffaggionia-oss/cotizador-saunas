@@ -244,11 +244,9 @@
   const fmtPct = n => (Number(n||0)*100).toFixed(1) + '%';
 
   async function api(action, params) {
-    if (params) {
-      const qs = new URLSearchParams(params).toString();
-      const res = await fetch(`${APPS_SCRIPT_URL}?action=${action}&${qs}`);
-      return res.json();
-    }
+    const qs = params ? '&' + new URLSearchParams(params).toString() : '';
+    const res = await fetch(`${APPS_SCRIPT_URL}?action=${action}${qs}`);
+    return res.json();
   }
   async function apiPost(body) {
     const res = await fetch(APPS_SCRIPT_URL, {
