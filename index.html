@@ -39,7 +39,8 @@
     padding:22px 28px 18px; border-bottom:1px solid var(--line);
     flex-wrap:wrap; gap:10px;
   }
-  .brand{font-family:'Fraunces',serif; font-size:22px; font-weight:600; letter-spacing:0.2px;}
+  .brand{font-family:'Fraunces',serif; font-size:22px; font-weight:600; letter-spacing:0.2px; display:flex; align-items:center; gap:10px;}
+  .brand-mark{ height:30px; width:auto; filter:brightness(0) invert(1); } /* isotipo azul -> blanco sobre fondo oscuro */
   .brand small{display:block; font-family:'Inter'; font-size:11px; font-weight:500; letter-spacing:1.5px; text-transform:uppercase; color:var(--ember); margin-top:2px;}
   .vendor-badge{
     display:flex; align-items:center; gap:8px; font-size:13px; color:var(--birch-dim);
@@ -73,13 +74,14 @@
   .overlay-header a:hover{ color:var(--birch); }
 
   .cot-row{
-    display:grid; grid-template-columns: 90px 1fr 1fr 90px 110px 90px;
+    display:grid; grid-template-columns: 112px 78px 1fr 1fr 90px 100px 90px;
     gap:10px; align-items:center; padding:10px 8px; border-bottom:1px solid var(--line);
     font-size:12.5px;
   }
   .cot-row.clickable{ cursor:pointer; transition:background .15s; }
   .cot-row.clickable:hover{ background:var(--stone-2); }
   .cot-row.header{ font-weight:700; color:var(--birch-dim); text-transform:uppercase; font-size:10.5px; letter-spacing:.5px; }
+  .cot-numero{ font-family:'JetBrains Mono',monospace; font-size:11.5px; color:var(--ember-bright); }
   .cot-row .precio{ font-family:'JetBrains Mono',monospace; text-align:right; }
   .cot-estado{ padding:3px 8px; border-radius:10px; font-size:10.5px; font-weight:700; text-transform:uppercase; text-align:center; }
   .cot-estado.enviada{ background:#3a3220; color:#e0c46a; }
@@ -276,8 +278,7 @@
     #printArea, #printArea *{ visibility:visible; }
     #printArea{ display:block; position:absolute; top:0; left:0; width:100%; padding:30px; background:#fff; color:#1c1512; }
     #printArea .p-header{ display:flex; justify-content:space-between; align-items:baseline; border-bottom:2px solid #1c1512; padding-bottom:14px; margin-bottom:20px; }
-    #printArea .p-brand{ font-family:'Fraunces',serif; font-size:26px; font-weight:600; letter-spacing:2px; }
-    #printArea .p-brand-sub{ display:block; font-family:'Inter',sans-serif; font-size:10px; font-weight:600; letter-spacing:1.5px; text-transform:uppercase; color:#c4622d; margin-top:2px; }
+    #printArea .p-logo{ height:46px; width:auto; }
     #printArea .p-meta{ font-size:12px; color:#555; text-align:right; line-height:1.6; }
     #printArea .p-client-grid{ display:grid; grid-template-columns:1fr 1fr; gap:6px 20px; margin-bottom:6px; font-size:13px; }
     #printArea .p-client-lbl{ display:block; font-size:10px; text-transform:uppercase; letter-spacing:.5px; color:#999; }
@@ -299,7 +300,7 @@
 <body>
 
 <div class="topbar">
-  <div class="brand">Kokkai <small>Cotizador de Saunas Auroom</small></div>
+  <div class="brand"><img src="kokkai-isotipo.png" alt="Kokkai" class="brand-mark"> Kokkai <small>Cotizador de Saunas Auroom</small></div>
   <div class="vendor-badge" id="loginBox">
     <input id="pinInput" type="password" inputmode="numeric" maxlength="6" placeholder="PIN" style="width:80px;">
     <button id="pinBtn" class="btn-login">Ingresar</button>
@@ -426,13 +427,14 @@
 
     const header = `
       <div class="cot-row header">
-        <span>Fecha</span><span>Cliente</span><span>Modelo</span>
+        <span>N°</span><span>Fecha</span><span>Cliente</span><span>Modelo</span>
         <span>Total (+IVA)</span><span>Estado</span><span></span>
       </div>`;
     const filas = cotizaciones.map(c => {
       const totalSinIva = c.pvp_usd + (c.incluye_colocacion ? c.colocacion_usd : 0);
       return `
       <div class="cot-row clickable" data-id="${c.id}">
+        <span class="cot-numero">${c.numero || '—'}</span>
         <span>${fmtFecha(c.fecha)}</span>
         <span>${c.cliente || '—'}</span>
         <span>${c.modelo}${c.incluye_colocacion?' · colocación':''}</span>
@@ -496,6 +498,7 @@
     }
 
     listEl.innerHTML = `
+      <div class="line"><span class="lbl">N° de presupuesto</span><span class="val" style="color:var(--ember-bright);">${c.numero||'—'}</span></div>
       <div class="line"><span class="lbl">Cliente</span><span class="val">${c.cliente||'—'}</span></div>
       <div class="line"><span class="lbl">Vendedor</span><span class="val">${c.vendedor||'—'}</span></div>
       <div class="line"><span class="lbl">Estado</span><span class="val"><span class="cot-estado ${c.estado}">${c.estado}</span></span></div>
@@ -551,10 +554,10 @@
     try { specs = await api('colocacion_specs', { potencia_kw: 6 }); if (specs.error) specs = null; } catch(e) { specs = null; }
 
     const printArea = document.getElementById('printArea');
-    const numeroCot = c.id ? ('COT-' + c.id.slice(0,8).toUpperCase()) : 'BORRADOR (sin guardar)';
+    const numeroCot = c.numero || 'BORRADOR (todavía sin guardar)';
     printArea.innerHTML = `
       <div class="p-header">
-        <div class="p-brand">KOKKAI<span class="p-brand-sub">Saunas Auroom</span></div>
+        <img class="p-logo" src="kokkai-logo.png" alt="Kokkai">
         <div class="p-meta">Presupuesto N° ${numeroCot}<br>Fecha: ${fecha} · Válido por ${validezDias} días</div>
       </div>
 
@@ -616,7 +619,14 @@
 
       <div class="p-footer">Kokkai Thermo Wood · Presupuesto N° ${numeroCot} válido por ${validezDias} días desde la fecha de emisión. Precios en dólares estadounidenses, sujetos a variación del tipo de cambio.</div>
     `;
+
+    // Título de la pestaña -> nombre sugerido del PDF al "Guardar como".
+    // Cada presupuesto sale con su propio nombre, no todos "Kokkai — Cotizador...".
+    const tituloOriginal = document.title;
+    const slug = s => (s||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').replace(/[^a-zA-Z0-9]+/g,'_').replace(/^_+|_+$/g,'');
+    document.title = `Presupuesto ${slug(numeroCot)} - ${slug(modeloNombre)}${clienteNombre ? ' - '+slug(clienteNombre) : ''}`;
     window.print();
+    setTimeout(() => { document.title = tituloOriginal; }, 500);
   }
 
   function mostrarSesion() {
@@ -1216,7 +1226,7 @@
     try {
       const res = await apiPost({action:'guardar', input, pin: sesion.pin});
       if (res.error) throw new Error(res.error);
-      statusMsg.innerHTML = `<div class="status-msg status-ok">Cotización guardada (ID ${res.id.slice(0,8)}…). La vas a encontrar en "Cotizaciones" arriba a la derecha${sesion.rol!=='gerencia'?' — gerencia la aprueba desde ahí para convertirla en venta':''}.</div>`;
+      statusMsg.innerHTML = `<div class="status-msg status-ok">Cotización guardada (${res.numero || res.id.slice(0,8)}). La vas a encontrar en "Cotizaciones" arriba a la derecha${sesion.rol!=='gerencia'?' — gerencia la aprueba desde ahí para convertirla en venta':''}.</div>`;
     } catch(e) {
       statusMsg.innerHTML = `<div class="status-msg status-err">${e.message}</div>`;
     }
