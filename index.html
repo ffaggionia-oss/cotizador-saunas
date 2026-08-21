@@ -259,10 +259,15 @@
     return res.json();
   }
 
+  let fotosPorFamilia = {};
+
   async function init() {
-    const data = await api('modelos');
+    // Un solo pedido para modelos y otro para fotos (en paralelo), en vez de
+    // pedir la ficha completa por cada una de las 110 tarjetas.
+    const [data, fotos] = await Promise.all([ api('modelos'), api('fotos') ]);
     if (data.error) { modelGrid.innerHTML = `<div class="loading">Error cargando catálogo: ${data.error}</div>`; return; }
     modelos = data;
+    fotosPorFamilia = fotos.error ? {} : fotos;
     renderCatTabs();
     renderModelGrid();
   }
@@ -292,19 +297,9 @@
     modelGrid.querySelectorAll('.model-card').forEach(el => {
       el.onclick = () => seleccionarModelo(Number(el.dataset.id));
       const img = el.querySelector('img');
-      loadFoto(img.dataset.familia).then(url => { if (url) img.src = url; });
+      const url = fotosPorFamilia[img.dataset.familia];
+      if (url) img.src = url; else img.style.display = 'none';
     });
-  }
-
-  const fotosCache = {};
-  async function loadFoto(familia) {
-    if (fotosCache[familia] !== undefined) return fotosCache[familia];
-    fotosCache[familia] = null; // evita pedidos duplicados en paralelo
-    try {
-      const ficha = await api('ficha', {modelo_id: modelos.find(m=>m.familia===familia).id});
-      fotosCache[familia] = ficha.foto_url || null;
-    } catch(e) { fotosCache[familia] = null; }
-    return fotosCache[familia];
   }
 
   async function seleccionarModelo(id) {
