@@ -254,6 +254,14 @@
     #printArea .p-row.total{ font-weight:700; font-size:16px; border-bottom:2px solid #1c1512; border-top:2px solid #1c1512; margin-top:6px; padding:10px 0; }
     #printArea .p-note{ font-size:11px; color:#777; margin-top:4px; }
     #printArea .p-section-title{ font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#c4622d; font-weight:700; margin:18px 0 6px; }
+    #printArea .p-product{ display:flex; gap:16px; margin-bottom:6px; }
+    #printArea .p-product img{ width:180px; height:135px; object-fit:cover; border-radius:6px; flex-shrink:0; }
+    #printArea .p-product-name{ font-family:'Fraunces',serif; font-size:19px; font-weight:600; margin:0 0 4px; }
+    #printArea .p-product-meta{ font-size:12px; color:#666; margin-bottom:8px; }
+    #printArea .p-link{ font-size:12px; color:#c4622d; text-decoration:none; font-weight:600; }
+    #printArea .p-box{ background:#f5f1ea; border:1px solid #ddd; border-radius:6px; padding:12px 14px; font-size:11.5px; line-height:1.6; color:#444; margin-top:6px; }
+    #printArea .p-box b{ color:#1c1512; }
+    #printArea .p-footer{ margin-top:24px; padding-top:12px; border-top:1px solid #ddd; font-size:10.5px; color:#999; }
   }
 </style>
 </head>
@@ -484,9 +492,13 @@
     document.getElementById('descargarBtn').onclick = () => descargarPresupuesto(c);
   }
 
-  function descargarPresupuesto(c, modeloNombreOverride, clienteNombreOverride) {
+  async function descargarPresupuesto(c, modeloNombreOverride, clienteNombreOverride) {
+    const familia = (c.modelo && c.modelo.familia) || (modeloSeleccionado && modeloSeleccionado.familia) || '';
     const modeloNombre = modeloNombreOverride || (c.modelo && c.modelo.modelo) || (c.modelo) || (modeloSeleccionado && modeloSeleccionado.modelo) || '';
+    const categoria = (c.modelo && c.modelo.categoria) || (modeloSeleccionado && modeloSeleccionado.categoria) || '';
     const clienteNombre = clienteNombreOverride || c.cliente || (document.getElementById('clienteInput') ? document.getElementById('clienteInput').value : '') || '';
+    const fotoUrl = fotosPorFamilia[familia] || '';
+    const paginaProducto = PAGINA_PRODUCTO[familia] || '';
     const gadgetNames = (c.gadgets_detalle || c.gadgets_seleccionados || []).map(g => {
       const nombre = g.nombre || (g.gadget && g.gadget.nombre) || '';
       const cant = g.cantidad > 1 ? ` ×${g.cantidad}` : '';
@@ -495,21 +507,58 @@
     const totalSinIva = c.pvp_usd + (c.incluye_colocacion ? c.colocacion_usd : 0);
     const fecha = new Date().toLocaleDateString('es-AR');
 
+    // Ficha técnica eléctrica de referencia (6kW = calefactor más común de la gama HUUM DROP).
+    // Si el sauna cotizado lleva un calefactor de otra potencia, esto es orientativo.
+    let specs = null;
+    try { specs = await api('colocacion_specs', { potencia_kw: 6 }); if (specs.error) specs = null; } catch(e) { specs = null; }
+
     const printArea = document.getElementById('printArea');
     printArea.innerHTML = `
       <div class="p-header">
         <div class="p-brand">Kokkai — Saunas Auroom</div>
         <div class="p-meta">Presupuesto<br>${fecha}${clienteNombre ? '<br>Cliente: '+clienteNombre : ''}</div>
       </div>
-      <div class="p-section-title">Modelo</div>
-      <div class="p-row"><span>${modeloNombre}</span><span></span></div>
-      ${gadgetNames.length ? `<div class="p-section-title">Incluye</div>` + gadgetNames.map(n => `<div class="p-row"><span>${n}</span><span></span></div>`).join('') : ''}
+
+      <div class="p-product">
+        ${fotoUrl ? `<img src="${fotoUrl}">` : ''}
+        <div>
+          <div class="p-product-name">${modeloNombre}</div>
+          <div class="p-product-meta">${familia}${categoria?' · '+categoria:''}</div>
+          ${paginaProducto ? `<a class="p-link" href="${paginaProducto}">Ver ficha del modelo en auroomwellness.com →</a>` : ''}
+        </div>
+      </div>
+
+      ${gadgetNames.length ? `<div class="p-section-title">Configuración seleccionada</div>` + gadgetNames.map(n => `<div class="p-row"><span>${n}</span><span></span></div>`).join('') : `<div class="p-section-title">Configuración</div><div class="p-row"><span>Modelo base, sin agregados adicionales</span><span></span></div>`}
+
       <div class="p-section-title">Precio</div>
       <div class="p-row"><span>Precio del sauna</span><span>${fmtUSD(c.pvp_usd)}</span></div>
       ${c.incluye_colocacion ? `<div class="p-row"><span>Colocación (instalación eléctrica, sin IVA)</span><span>${fmtUSD(c.colocacion_usd)}</span></div>` : ''}
       <div class="p-row total"><span>Total + IVA</span><span>${fmtUSD(totalSinIva)}</span></div>
       <div class="p-note">IVA (${fmtPct(c.iva_pct!=null?c.iva_pct:0.21)}) no incluido: ${fmtUSD(c.iva_usd)} — total con IVA ${fmtUSD(c.precio_final_usd)}</div>
-      <div class="p-note" style="margin-top:16px;">Presupuesto válido por 7 días. Precios en dólares estadounidenses, sujetos a variación del tipo de cambio.</div>
+
+      <div class="p-section-title">Requisitos de instalación</div>
+      <div class="p-box">
+        <b>Alimentación eléctrica trifásica requerida.</b> El calefactor del sauna necesita una acometida
+        eléctrica trifásica dedicada, con protección térmica y cableado resistente al calor (tipo H07RN-F,
+        nunca PVC estándar), y caja de conexión estanca cercana al equipo. A modo de referencia para un
+        calefactor de ${specs ? specs.potencia_kw : 6} kW: térmica ${specs ? specs.termica : 'trifásica 3×10A'},
+        cable ${specs ? specs.seccion_cable_mm2 : 'trifásico 5×1,5 mm²'}. La conexión final del calefactor
+        debe hacerla siempre un electricista matriculado.
+        ${c.incluye_colocacion
+          ? '<br><br><b>Esta cotización incluye la colocación</b>: Kokkai realiza la instalación eléctrica llave en mano de la acometida próxima al sauna, dejando la alimentación lista y protegida para conectar el calefactor.'
+          : '<br><br>Esta cotización <b>no incluye</b> la colocación — la instalación eléctrica queda a cargo del cliente o de un electricista de su elección, siguiendo esta misma especificación.'}
+      </div>
+
+      <div class="p-section-title">Garantía</div>
+      <div class="p-box">
+        <b>Garantía de fábrica Auroom: 2 años desde la fecha de entrega</b> (no más de 3 años desde la fecha
+        de fabricación), cubre defectos de fabricación y de materiales. No cubre características naturales
+        de la madera (pequeñas variaciones de color o fisuras menores que no afectan la funcionalidad).
+        El calefactor y los equipos electrónicos llevan la garantía propia de su fabricante (HUUM u otro),
+        independiente de esta.
+      </div>
+
+      <div class="p-footer">Presupuesto válido por 7 días. Precios en dólares estadounidenses, sujetos a variación del tipo de cambio.</div>
     `;
     window.print();
   }
@@ -582,6 +631,22 @@
   }
 
   let fotosPorFamilia = {};
+  // URLs de ficha de producto en auroomwellness.com, para el link directo en el presupuesto.
+  // Wave todavía no tiene ficha propia en el sitio -> usa la de Quu como referencia.
+  const PAGINA_PRODUCTO = {
+    Cala:'https://auroomwellness.com/product/cala-indoor-sauna/', Lumina:'https://auroomwellness.com/product/lumina/',
+    Baia:'https://auroomwellness.com/product/indoor-sauna-baia/', Nativa:'https://auroomwellness.com/product/nativa/',
+    Emma:'https://auroomwellness.com/product/emma/', Libera:'https://auroomwellness.com/product/libera/',
+    Irradia:'https://auroomwellness.com/product/irradia/', Vulcana:'https://auroomwellness.com/product/vulcana/',
+    Arti:'https://auroomwellness.com/product/arti/', Terra:'https://auroomwellness.com/product/terra/',
+    Natura:'https://auroomwellness.com/product/natura/', Aurea:'https://auroomwellness.com/product/aurea/',
+    Garda:'https://auroomwellness.com/product/garda/', Quu:'https://auroomwellness.com/product/quu/',
+    Wave:'https://auroomwellness.com/product/quu/', Mira:'https://auroomwellness.com/product/mira/',
+    HALO:'https://auroomwellness.com/product/halo/', KAIA:'https://auroomwellness.com/product/kaia/',
+    LUMA:'https://auroomwellness.com/product/luma/', SOLA:'https://auroomwellness.com/product/sola/',
+    NORA:'https://auroomwellness.com/product/nora/', Velaqua:'https://auroomwellness.com/product/velaqua/',
+    VelEira:'https://auroomwellness.com/product/veleira/',
+  };
   let sesion = null; // {pin, nombre, rol} — se guarda en localStorage tras login exitoso
   let configGlobal = null;
 
