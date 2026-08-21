@@ -48,6 +48,47 @@
     background:var(--stone-2); border:1px solid var(--line); color:var(--birch);
     padding:6px 10px; border-radius:6px; font-family:'Inter'; font-size:13px; width:200px;
   }
+  .btn-login{
+    background:var(--ember); color:var(--charred-oak); border:none; border-radius:6px;
+    padding:7px 14px; font-weight:600; cursor:pointer; font-size:13px;
+  }
+  .btn-login:hover{ background:var(--ember-bright); }
+  #logoutLink{ font-size:12px; color:var(--birch-dim); text-decoration:underline; cursor:pointer; }
+  #logoutLink:hover{ color:var(--birch); }
+  #cotizacionesLink{ font-size:12px; color:var(--ember-bright); text-decoration:underline; cursor:pointer; }
+  #cotizacionesLink:hover{ color:var(--ember); }
+  #loginMsg{ font-size:12px; color:var(--rust-warn); }
+
+  .overlay{
+    position:fixed; inset:0; background:rgba(10,7,5,0.75); z-index:100;
+    display:flex; align-items:flex-start; justify-content:center; padding:5vh 20px;
+  }
+  .overlay-panel{
+    background:var(--stone); border:1px solid var(--line); border-radius:var(--radius);
+    width:100%; max-width:780px; max-height:88vh; overflow-y:auto; padding:22px 26px;
+  }
+  .overlay-header{ display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+  .overlay-header h3{ font-family:'Fraunces',serif; font-size:19px; margin:0; }
+  .overlay-header a{ color:var(--birch-dim); text-decoration:none; font-size:13px; cursor:pointer; }
+  .overlay-header a:hover{ color:var(--birch); }
+
+  .cot-row{
+    display:grid; grid-template-columns: 90px 1fr 1fr 90px 110px 90px;
+    gap:10px; align-items:center; padding:10px 8px; border-bottom:1px solid var(--line);
+    font-size:12.5px;
+  }
+  .cot-row.header{ font-weight:700; color:var(--birch-dim); text-transform:uppercase; font-size:10.5px; letter-spacing:.5px; }
+  .cot-row .precio{ font-family:'JetBrains Mono',monospace; text-align:right; }
+  .cot-estado{ padding:3px 8px; border-radius:10px; font-size:10.5px; font-weight:700; text-transform:uppercase; text-align:center; }
+  .cot-estado.enviada{ background:#3a3220; color:#e0c46a; }
+  .cot-estado.aprobada{ background:#1e2c23; color:var(--pine-bright); }
+  .cot-estado.borrador{ background:var(--stone-2); color:var(--birch-dim); }
+  .cot-approve-btn{
+    background:var(--pine-bright); color:var(--charred-oak); border:none; border-radius:6px;
+    padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer;
+  }
+  .cot-approve-btn:hover{ opacity:.85; }
+  .cot-approve-btn:disabled{ opacity:.4; cursor:not-allowed; }
   .rol-badge{
     font-size:11px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase;
     padding:4px 9px; border-radius:12px;
@@ -203,10 +244,25 @@
 
 <div class="topbar">
   <div class="brand">Kokkai <small>Cotizador de Saunas Auroom</small></div>
-  <div class="vendor-badge">
-    Vendedor:
-    <input id="vendedorInput" type="email" placeholder="tu@kokkai.ar">
+  <div class="vendor-badge" id="loginBox">
+    <input id="pinInput" type="password" inputmode="numeric" maxlength="6" placeholder="PIN" style="width:80px;">
+    <button id="pinBtn" class="btn-login">Ingresar</button>
+    <span id="loginMsg"></span>
+  </div>
+  <div class="vendor-badge" id="sessionBox" style="display:none;">
     <span id="rolBadge"></span>
+    <a href="#" id="cotizacionesLink">Cotizaciones</a>
+    <a href="#" id="logoutLink">Cerrar sesión</a>
+  </div>
+</div>
+
+<div id="cotizacionesOverlay" class="overlay" style="display:none;">
+  <div class="overlay-panel">
+    <div class="overlay-header">
+      <h3>Cotizaciones guardadas</h3>
+      <a href="#" id="cerrarCotizacionesLink">Cerrar ✕</a>
+    </div>
+    <div id="cotizacionesList"><div class="loading">Cargando…</div></div>
   </div>
 </div>
 
@@ -261,44 +317,100 @@
   const colocacionCheck = document.getElementById('colocacionCheck');
   const summaryEmpty = document.getElementById('summaryEmpty');
   const summaryContent = document.getElementById('summaryContent');
-  const vendedorInput = document.getElementById('vendedorInput');
+  const pinInput = document.getElementById('pinInput');
+  const pinBtn = document.getElementById('pinBtn');
+  const loginBox = document.getElementById('loginBox');
+  const sessionBox = document.getElementById('sessionBox');
+  const loginMsg = document.getElementById('loginMsg');
 
-  vendedorInput.value = localStorage.getItem('kokkai_vendedor_email') || '';
-  vendedorInput.addEventListener('change', () => {
-    localStorage.setItem('kokkai_vendedor_email', vendedorInput.value);
-    checkRol();
-  });
-  if (vendedorInput.value) checkRol();
-
-  async function checkRol() {
-    const email = vendedorInput.value.trim();
-    const rolBadge = document.getElementById('rolBadge');
-    const gerenciaPanel = document.getElementById('gerenciaPanel');
-    if (!email) {
-      rolActual = null;
-      rolBadge.innerHTML = '';
-      gerenciaPanel.style.display = 'none';
-      if (calcActual) recalcular();
-      return;
-    }
-    const r = await api('rol', { email });
-    rolActual = r.rol || null;
-    if (rolActual === 'gerencia') {
-      rolBadge.innerHTML = `<span class="rol-badge gerencia">Gerencia</span>`;
-      await renderGerenciaPanel();
-    } else if (rolActual) {
-      rolBadge.innerHTML = `<span class="rol-badge vendedor">${rolActual}</span>`;
-      gerenciaPanel.style.display = 'none';
-    } else {
-      rolBadge.innerHTML = `<span class="rol-badge desconocido">mail no reconocido</span>`;
-      gerenciaPanel.style.display = 'none';
-    }
-    if (calcActual !== null || modeloSeleccionado) recalcular();
+  async function intentarLogin() {
+    const pin = pinInput.value.trim();
+    if (!pin) return;
+    loginMsg.textContent = '';
+    const r = await apiPost({ action: 'login', pin });
+    if (r.error) { loginMsg.textContent = 'PIN incorrecto'; pinInput.value=''; pinInput.focus(); return; }
+    sesion = { pin, nombre: r.nombre, rol: r.rol };
+    localStorage.setItem('kokkai_sauna_sesion', JSON.stringify(sesion));
+    mostrarSesion();
   }
+  pinBtn.onclick = intentarLogin;
+  pinInput.addEventListener('keydown', e => { if (e.key === 'Enter') intentarLogin(); });
+
+  document.getElementById('logoutLink').onclick = (e) => {
+    e.preventDefault();
+    sesion = null;
+    localStorage.removeItem('kokkai_sauna_sesion');
+    document.getElementById('gerenciaPanel').style.display = 'none';
+    mostrarSesion();
+    if (modeloSeleccionado) recalcular();
+  };
+
+  const cotizacionesOverlay = document.getElementById('cotizacionesOverlay');
+  document.getElementById('cotizacionesLink').onclick = (e) => { e.preventDefault(); abrirCotizaciones(); };
+  document.getElementById('cerrarCotizacionesLink').onclick = (e) => { e.preventDefault(); cotizacionesOverlay.style.display = 'none'; };
+  cotizacionesOverlay.onclick = (e) => { if (e.target === cotizacionesOverlay) cotizacionesOverlay.style.display = 'none'; };
+
+  const fmtFecha = iso => { try { return new Date(iso).toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit'}); } catch(e) { return iso; } };
+
+  async function abrirCotizaciones() {
+    if (!sesion) return;
+    cotizacionesOverlay.style.display = 'flex';
+    const listEl = document.getElementById('cotizacionesList');
+    listEl.innerHTML = `<div class="loading">Cargando…</div>`;
+    const cotizaciones = await apiPost({ action: 'listar', pin: sesion.pin });
+    if (cotizaciones.error) { listEl.innerHTML = `<div class="status-msg status-err">${cotizaciones.error}</div>`; return; }
+    if (!cotizaciones.length) { listEl.innerHTML = `<div class="empty-state">Todavía no hay cotizaciones guardadas${sesion.rol!=='gerencia'?' a tu nombre':''}.</div>`; return; }
+
+    const esGerencia = sesion.rol === 'gerencia';
+    const header = `
+      <div class="cot-row header">
+        <span>Fecha</span><span>Cliente</span><span>Modelo</span>
+        <span>Precio final</span><span>Estado</span><span></span>
+      </div>`;
+    const filas = cotizaciones.map(c => `
+      <div class="cot-row" data-id="${c.id}">
+        <span>${fmtFecha(c.fecha)}</span>
+        <span>${c.cliente || '—'}</span>
+        <span>${c.modelo}${c.incluye_colocacion?' · colocación':''}</span>
+        <span class="precio">US$ ${Number(c.precio_final_usd||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</span>
+        <span><span class="cot-estado ${c.estado}">${c.estado}</span></span>
+        <span>${esGerencia && c.estado==='enviada' ? `<button class="cot-approve-btn" data-id="${c.id}">Aprobar</button>` : ''}</span>
+      </div>`).join('');
+    listEl.innerHTML = header + filas;
+
+    listEl.querySelectorAll('.cot-approve-btn').forEach(btn => {
+      btn.onclick = async () => {
+        btn.disabled = true; btn.textContent = 'Aprobando…';
+        const res = await apiPost({ action: 'aprobar', cotizacion_id: btn.dataset.id, pin: sesion.pin });
+        if (res.error) { alert(res.error); btn.disabled = false; btn.textContent = 'Aprobar'; return; }
+        abrirCotizaciones(); // refresca la lista
+      };
+    });
+  }
+
+  function mostrarSesion() {
+    if (sesion) {
+      loginBox.style.display = 'none';
+      sessionBox.style.display = 'flex';
+      const clase = sesion.rol === 'gerencia' ? 'gerencia' : 'vendedor';
+      document.getElementById('rolBadge').innerHTML = `<span class="rol-badge ${clase}">${sesion.nombre} · ${sesion.rol}</span>`;
+      if (sesion.rol === 'gerencia') renderGerenciaPanel();
+    } else {
+      loginBox.style.display = 'flex';
+      sessionBox.style.display = 'none';
+      pinInput.value = '';
+    }
+  }
+
+  // Recuperar sesión guardada (evita tener que loguearse en cada visita)
+  try {
+    const guardada = JSON.parse(localStorage.getItem('kokkai_sauna_sesion') || 'null');
+    if (guardada && guardada.pin) { sesion = guardada; mostrarSesion(); }
+  } catch(e) {}
 
   async function renderGerenciaPanel() {
     const panel = document.getElementById('gerenciaPanel');
-    configGlobal = await api('config_global', { email: vendedorInput.value.trim() });
+    configGlobal = await api('config_global', { pin: sesion.pin });
     if (configGlobal.error) { panel.style.display = 'none'; return; }
     panel.style.display = 'flex';
     panel.className = 'gerencia-panel';
@@ -319,7 +431,7 @@
       if (techoVal !== '') cambios.margen_maximo_pct = Number(techoVal) / 100;
       const msg = document.getElementById('cfgMsg');
       msg.textContent = 'Guardando…';
-      const res = await apiPost({ action: 'actualizar_config', cambios, userEmail: vendedorInput.value.trim() });
+      const res = await apiPost({ action: 'actualizar_config', cambios, pin: sesion.pin });
       if (res.error) { msg.textContent = res.error; msg.style.color = 'var(--rust-warn)'; }
       else { msg.textContent = 'Guardado ✓'; msg.style.color = 'var(--pine-bright)'; configGlobal = res; if (calcActual) recalcular(); }
     };
@@ -344,7 +456,7 @@
   }
 
   let fotosPorFamilia = {};
-  let rolActual = null;
+  let sesion = null; // {pin, nombre, rol} — se guarda en localStorage tras login exitoso
   let configGlobal = null;
 
   async function init() {
@@ -468,7 +580,7 @@
       gadget_ids: Object.keys(gadgetsSeleccionados),
       incluye_colocacion: incluyeColocacion
     };
-    const calc = await apiPost({action:'cotizar', input, userEmail: vendedorInput.value.trim()});
+    const calc = await apiPost({action:'cotizar', input, pin: sesion ? sesion.pin : ''});
     if (calc.error) { summaryContent.innerHTML = `<div class="status-msg status-err">${calc.error}</div>`; return; }
     calcActual = calc;
     if (calc.vista === 'gerencia') renderSummaryGerencia(calc);
@@ -560,8 +672,7 @@
   async function guardarCotizacion() {
     const statusMsg = document.getElementById('statusMsg');
     const cliente = document.getElementById('clienteInput').value.trim();
-    const vendedor = vendedorInput.value.trim();
-    if (!vendedor) { statusMsg.innerHTML = `<div class="status-msg status-err">Cargá tu mail de vendedor arriba a la derecha antes de guardar.</div>`; return; }
+    if (!sesion) { statusMsg.innerHTML = `<div class="status-msg status-err">Iniciá sesión con tu PIN arriba a la derecha antes de guardar.</div>`; return; }
     if (!cliente) { statusMsg.innerHTML = `<div class="status-msg status-err">Cargá el nombre del cliente.</div>`; return; }
 
     const btn = document.getElementById('guardarBtn');
@@ -575,9 +686,9 @@
       estado: 'enviada'
     };
     try {
-      const res = await apiPost({action:'guardar', input, userEmail: vendedor});
+      const res = await apiPost({action:'guardar', input, pin: sesion.pin});
       if (res.error) throw new Error(res.error);
-      statusMsg.innerHTML = `<div class="status-msg status-ok">Cotización guardada (ID ${res.id.slice(0,8)}…). Para convertirla en venta, gerencia la aprueba desde el Portal.</div>`;
+      statusMsg.innerHTML = `<div class="status-msg status-ok">Cotización guardada (ID ${res.id.slice(0,8)}…). La vas a encontrar en "Cotizaciones" arriba a la derecha${sesion.rol!=='gerencia'?' — gerencia la aprueba desde ahí para convertirla en venta':''}.</div>`;
     } catch(e) {
       statusMsg.innerHTML = `<div class="status-msg status-err">${e.message}</div>`;
     }
