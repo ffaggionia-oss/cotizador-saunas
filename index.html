@@ -575,6 +575,14 @@
       sessionBox.style.display = 'none';
       pinInput.value = '';
     }
+    // Refresca precios EXW visibles/ocultos según el rol recién resuelto.
+    // Al cargar la página por primera vez esto es un no-op (todavía no hay
+    // modelos cargados); init() ya los va a pintar bien una vez lleguen.
+    if (modelos.length) renderModelGrid();
+    if (modeloSeleccionado && gadgetsDisponibles.length) {
+      renderFicha({ modelo: modeloSeleccionado, foto_url: fichaBox.querySelector('img') ? fichaBox.querySelector('img').src : '' });
+      renderGadgets();
+    }
   }
 
   // Recuperar sesión guardada (evita tener que loguearse en cada visita)
@@ -671,6 +679,8 @@
     });
   }
 
+  function esGerencia() { return !!(sesion && sesion.rol === 'gerencia'); }
+
   function renderModelGrid() {
     const list = catFiltro === 'todas' ? modelos : modelos.filter(m => m.categoria === catFiltro);
     modelGrid.innerHTML = list.map(m => `
@@ -679,7 +689,7 @@
         <div class="info">
           <div class="fam">${m.familia}</div>
           <div class="nombre">${m.modelo}</div>
-          <div class="precio">${fmtEUR(m.precio_base_eur)} EXW</div>
+          ${esGerencia() ? `<div class="precio">${fmtEUR(m.precio_base_eur)} EXW</div>` : ''}
         </div>
       </div>
     `).join('');
@@ -716,7 +726,7 @@
       <div>
         <h2>${m.modelo}</h2>
         <div class="meta">${m.familia} · ${m.categoria}${m.tamano!=='-'?' · Talle '+m.tamano:''}${m.material_color!=='-'?' · '+m.material_color:''}</div>
-        <div class="base-precio">${fmtEUR(m.precio_base_eur)} EXW (sin heater, sin extras)</div>
+        ${esGerencia() ? `<div class="base-precio">${fmtEUR(m.precio_base_eur)} EXW (sin heater, sin extras)</div>` : ''}
         ${m.notas ? `<div class="meta" style="margin-top:6px;">${m.notas}</div>` : ''}
       </div>
     `;
@@ -736,15 +746,15 @@
     gadgetsBox.innerHTML = Object.entries(grupos).map(([cat, items]) => `
       <div class="gadget-group">
         <h4>${nombresCategoria[cat]||cat}</h4>
-        ${items.map(g => `
-          <div class="gadget-row" data-id="${g.id}">
+        ${items.map(g => { const marcado = !!gadgetsSeleccionados[g.id]; return `
+          <div class="gadget-row ${marcado?'checked':''}" data-id="${g.id}">
             <div class="left">
-              <input type="checkbox" data-id="${g.id}">
+              <input type="checkbox" data-id="${g.id}" ${marcado?'checked':''}>
               <div class="nombre">${g.nombre}${g.notas?`<small>${g.notas}</small>`:''}</div>
             </div>
-            <div class="precio">${g.precio_eur!=null ? '+ '+fmtEUR(g.precio_eur) : 'consultar'}</div>
+            ${esGerencia() ? `<div class="precio">${g.precio_eur!=null ? '+ '+fmtEUR(g.precio_eur) : 'consultar'}</div>` : ''}
           </div>
-        `).join('')}
+        `; }).join('')}
       </div>
     `).join('');
     gadgetsBox.querySelectorAll('.gadget-row').forEach(row => {
