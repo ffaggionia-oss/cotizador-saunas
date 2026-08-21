@@ -77,6 +77,8 @@
     gap:10px; align-items:center; padding:10px 8px; border-bottom:1px solid var(--line);
     font-size:12.5px;
   }
+  .cot-row.clickable{ cursor:pointer; transition:background .15s; }
+  .cot-row.clickable:hover{ background:var(--stone-2); }
   .cot-row.header{ font-weight:700; color:var(--birch-dim); text-transform:uppercase; font-size:10.5px; letter-spacing:.5px; }
   .cot-row .precio{ font-family:'JetBrains Mono',monospace; text-align:right; }
   .cot-estado{ padding:3px 8px; border-radius:10px; font-size:10.5px; font-weight:700; text-transform:uppercase; text-align:center; }
@@ -238,6 +240,21 @@
   .status-err{ background:#3a201a; border:1px solid var(--rust-warn); color:#f0c4b3; }
 
   .loading{ text-align:center; padding:60px 0; color:var(--birch-dim); }
+
+  /* --- Presupuesto imprimible --- */
+  #printArea{ display:none; }
+  @media print{
+    body *{ visibility:hidden; }
+    #printArea, #printArea *{ visibility:visible; }
+    #printArea{ display:block; position:absolute; top:0; left:0; width:100%; padding:30px; background:#fff; color:#1c1512; }
+    #printArea .p-header{ display:flex; justify-content:space-between; align-items:baseline; border-bottom:2px solid #1c1512; padding-bottom:14px; margin-bottom:20px; }
+    #printArea .p-brand{ font-family:'Fraunces',serif; font-size:24px; font-weight:600; }
+    #printArea .p-meta{ font-size:12px; color:#555; text-align:right; }
+    #printArea .p-row{ display:flex; justify-content:space-between; padding:7px 0; font-size:13.5px; border-bottom:1px solid #ddd; }
+    #printArea .p-row.total{ font-weight:700; font-size:16px; border-bottom:2px solid #1c1512; border-top:2px solid #1c1512; margin-top:6px; padding:10px 0; }
+    #printArea .p-note{ font-size:11px; color:#777; margin-top:4px; }
+    #printArea .p-section-title{ font-size:11px; text-transform:uppercase; letter-spacing:1px; color:#c4622d; font-weight:700; margin:18px 0 6px; }
+  }
 </style>
 </head>
 <body>
@@ -259,7 +276,7 @@
 <div id="cotizacionesOverlay" class="overlay" style="display:none;">
   <div class="overlay-panel">
     <div class="overlay-header">
-      <h3>Cotizaciones guardadas</h3>
+      <h3 id="overlayTitle">Cotizaciones guardadas</h3>
       <a href="#" id="cerrarCotizacionesLink">Cerrar ✕</a>
     </div>
     <div id="cotizacionesList"><div class="loading">Cargando…</div></div>
@@ -297,6 +314,8 @@
     <div id="summaryContent" style="display:none;"></div>
   </div>
 </div>
+
+<div id="printArea"></div>
 
 <script src="config.js"></script>
 <script>
@@ -355,37 +374,144 @@
   async function abrirCotizaciones() {
     if (!sesion) return;
     cotizacionesOverlay.style.display = 'flex';
+    await renderListaCotizaciones();
+  }
+
+  async function renderListaCotizaciones() {
     const listEl = document.getElementById('cotizacionesList');
+    document.getElementById('overlayTitle').textContent = 'Cotizaciones guardadas';
     listEl.innerHTML = `<div class="loading">Cargando…</div>`;
     const cotizaciones = await apiPost({ action: 'listar', pin: sesion.pin });
     if (cotizaciones.error) { listEl.innerHTML = `<div class="status-msg status-err">${cotizaciones.error}</div>`; return; }
     if (!cotizaciones.length) { listEl.innerHTML = `<div class="empty-state">Todavía no hay cotizaciones guardadas${sesion.rol!=='gerencia'?' a tu nombre':''}.</div>`; return; }
 
-    const esGerencia = sesion.rol === 'gerencia';
     const header = `
       <div class="cot-row header">
         <span>Fecha</span><span>Cliente</span><span>Modelo</span>
-        <span>Precio final</span><span>Estado</span><span></span>
+        <span>Total (+IVA)</span><span>Estado</span><span></span>
       </div>`;
-    const filas = cotizaciones.map(c => `
-      <div class="cot-row" data-id="${c.id}">
+    const filas = cotizaciones.map(c => {
+      const totalSinIva = c.pvp_usd + (c.incluye_colocacion ? c.colocacion_usd : 0);
+      return `
+      <div class="cot-row clickable" data-id="${c.id}">
         <span>${fmtFecha(c.fecha)}</span>
         <span>${c.cliente || '—'}</span>
         <span>${c.modelo}${c.incluye_colocacion?' · colocación':''}</span>
-        <span class="precio">US$ ${Number(c.precio_final_usd||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</span>
+        <span class="precio">US$ ${Number(totalSinIva||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</span>
         <span><span class="cot-estado ${c.estado}">${c.estado}</span></span>
-        <span>${esGerencia && c.estado==='enviada' ? `<button class="cot-approve-btn" data-id="${c.id}">Aprobar</button>` : ''}</span>
-      </div>`).join('');
+        <span>${sesion.rol==='gerencia' && c.estado==='enviada' ? `<button class="cot-approve-btn" data-id="${c.id}">Aprobar</button>` : ''}</span>
+      </div>`;
+    }).join('');
     listEl.innerHTML = header + filas;
 
+    listEl.querySelectorAll('.cot-row.clickable').forEach(row => {
+      row.onclick = (e) => { if (!e.target.classList.contains('cot-approve-btn')) verDetalleCotizacion(row.dataset.id); };
+    });
     listEl.querySelectorAll('.cot-approve-btn').forEach(btn => {
-      btn.onclick = async () => {
+      btn.onclick = async (e) => {
+        e.stopPropagation();
         btn.disabled = true; btn.textContent = 'Aprobando…';
         const res = await apiPost({ action: 'aprobar', cotizacion_id: btn.dataset.id, pin: sesion.pin });
         if (res.error) { alert(res.error); btn.disabled = false; btn.textContent = 'Aprobar'; return; }
-        abrirCotizaciones(); // refresca la lista
+        renderListaCotizaciones();
       };
     });
+  }
+
+  async function verDetalleCotizacion(id) {
+    const listEl = document.getElementById('cotizacionesList');
+    document.getElementById('overlayTitle').innerHTML = `<a href="#" id="volverListaLink" style="color:var(--birch-dim); text-decoration:none; font-size:14px;">← Cotizaciones</a>`;
+    document.getElementById('volverListaLink').onclick = (e) => { e.preventDefault(); renderListaCotizaciones(); };
+    listEl.innerHTML = `<div class="loading">Cargando…</div>`;
+
+    const c = await apiPost({ action: 'obtener', cotizacion_id: id, pin: sesion.pin });
+    if (c.error) { listEl.innerHTML = `<div class="status-msg status-err">${c.error}</div>`; return; }
+
+    const esGerencia = sesion.rol === 'gerencia';
+    const gadgetLines = (c.gadgets_detalle || []).map(g => `
+      <div class="line selected-item"><span class="lbl">✓ ${g.nombre}${g.cantidad>1?' ×'+g.cantidad:''}</span></div>
+    `).join('');
+
+    let costosHtml = '';
+    if (esGerencia) {
+      const margenColor = c.margen_bruto_pct < c.margen_minimo_pct_actual ? 'var(--rust-warn)' : (c.margen_bruto_pct >= c.margen_minimo_pct_actual*1.15 ? 'var(--pine-bright)' : 'var(--ember-bright)');
+      const gaugePct = Math.min(100, Math.max(0, c.margen_bruto_pct*100));
+      const floorPct = c.margen_minimo_pct_actual*100;
+      costosHtml = `
+        <div class="divider"></div>
+        <div class="line"><span class="lbl">FOB total (EUR)</span><span class="val">${fmtEUR(c.fob_eur)}</span></div>
+        <div class="line"><span class="lbl">Tipo de cambio</span><span class="val">${c.tipo_cambio}</span></div>
+        <div class="line"><span class="lbl">Costo nacionalizado (USD)</span><span class="val">${fmtUSD(c.costo_nacionalizado_usd)}</span></div>
+        <div class="line"><span class="lbl">Markup</span><span class="val">${fmtPct(c.markup_pct)}</span></div>
+        <div class="line"><span class="lbl">Margen bruto</span><span class="val">${fmtUSD(c.margen_bruto_usd)} (${fmtPct(c.margen_bruto_pct)})</span></div>
+        <div class="gauge-wrap">
+          <div class="gauge-label"><span>Margen bruto</span><span>piso vigente ${fmtPct(c.margen_minimo_pct_actual)}</span></div>
+          <div class="gauge"><div class="floor-mark" style="left:${floorPct}%"></div><div class="fill" style="width:${gaugePct}%; background:${margenColor};"></div></div>
+          <div class="gauge-pct" style="color:${margenColor}">${fmtPct(c.margen_bruto_pct)}</div>
+        </div>
+        <div class="line"><span class="lbl">IIBB</span><span class="val">− ${fmtUSD(c.iibb_usd)}</span></div>
+        <div class="line"><span class="lbl">Comisión arquitecto</span><span class="val">− ${fmtUSD(c.com_arquitecto_usd)}</span></div>
+        <div class="line"><span class="lbl">Comisión vendedor</span><span class="val">− ${fmtUSD(c.com_vendedor_usd)}</span></div>
+        <div class="line"><span class="lbl">Margen neto final</span><span class="val">${fmtUSD(c.margen_neto_usd)} (${fmtPct(c.margen_neto_pct)})</span></div>
+      `;
+    }
+
+    listEl.innerHTML = `
+      <div class="line"><span class="lbl">Cliente</span><span class="val">${c.cliente||'—'}</span></div>
+      <div class="line"><span class="lbl">Vendedor</span><span class="val">${c.vendedor||'—'}</span></div>
+      <div class="line"><span class="lbl">Estado</span><span class="val"><span class="cot-estado ${c.estado}">${c.estado}</span></span></div>
+      <div class="divider"></div>
+      <div class="line selected-item"><span class="lbl">${c.modelo.modelo || c.modelo}</span></div>
+      ${gadgetLines}
+      <div class="divider"></div>
+      <div class="line"><span class="lbl">Precio del sauna</span><span class="val">${fmtUSD(c.pvp_usd)}</span></div>
+      ${bloquePrecioFinal(c)}
+      ${costosHtml}
+      <div style="display:flex; gap:10px; margin-top:18px;">
+        ${esGerencia && c.estado==='enviada' ? `<button class="btn btn-primary" id="aprobarDetalleBtn" style="margin-top:0;">Aprobar</button>` : ''}
+        <button class="btn btn-secondary" id="descargarBtn" style="margin-top:0;">Descargar presupuesto</button>
+      </div>
+    `;
+    if (esGerencia && c.estado==='enviada') {
+      document.getElementById('aprobarDetalleBtn').onclick = async () => {
+        const btn = document.getElementById('aprobarDetalleBtn');
+        btn.disabled = true; btn.textContent = 'Aprobando…';
+        const res = await apiPost({ action: 'aprobar', cotizacion_id: id, pin: sesion.pin });
+        if (res.error) { alert(res.error); btn.disabled = false; btn.textContent = 'Aprobar'; return; }
+        verDetalleCotizacion(id);
+      };
+    }
+    document.getElementById('descargarBtn').onclick = () => descargarPresupuesto(c);
+  }
+
+  function descargarPresupuesto(c, modeloNombreOverride, clienteNombreOverride) {
+    const modeloNombre = modeloNombreOverride || (c.modelo && c.modelo.modelo) || (c.modelo) || (modeloSeleccionado && modeloSeleccionado.modelo) || '';
+    const clienteNombre = clienteNombreOverride || c.cliente || (document.getElementById('clienteInput') ? document.getElementById('clienteInput').value : '') || '';
+    const gadgetNames = (c.gadgets_detalle || c.gadgets_seleccionados || []).map(g => {
+      const nombre = g.nombre || (g.gadget && g.gadget.nombre) || '';
+      const cant = g.cantidad > 1 ? ` ×${g.cantidad}` : '';
+      return nombre + cant;
+    });
+    const totalSinIva = c.pvp_usd + (c.incluye_colocacion ? c.colocacion_usd : 0);
+    const fecha = new Date().toLocaleDateString('es-AR');
+
+    const printArea = document.getElementById('printArea');
+    printArea.innerHTML = `
+      <div class="p-header">
+        <div class="p-brand">Kokkai — Saunas Auroom</div>
+        <div class="p-meta">Presupuesto<br>${fecha}${clienteNombre ? '<br>Cliente: '+clienteNombre : ''}</div>
+      </div>
+      <div class="p-section-title">Modelo</div>
+      <div class="p-row"><span>${modeloNombre}</span><span></span></div>
+      ${gadgetNames.length ? `<div class="p-section-title">Incluye</div>` + gadgetNames.map(n => `<div class="p-row"><span>${n}</span><span></span></div>`).join('') : ''}
+      <div class="p-section-title">Precio</div>
+      <div class="p-row"><span>Precio del sauna</span><span>${fmtUSD(c.pvp_usd)}</span></div>
+      ${c.incluye_colocacion ? `<div class="p-row"><span>Colocación (instalación eléctrica, sin IVA)</span><span>${fmtUSD(c.colocacion_usd)}</span></div>` : ''}
+      <div class="p-row total"><span>Total + IVA</span><span>${fmtUSD(totalSinIva)}</span></div>
+      <div class="p-note">IVA (${fmtPct(c.iva_pct!=null?c.iva_pct:0.21)}) no incluido: ${fmtUSD(c.iva_usd)} — total con IVA ${fmtUSD(c.precio_final_usd)}</div>
+      <div class="p-note" style="margin-top:16px;">Presupuesto válido por 7 días. Precios en dólares estadounidenses, sujetos a variación del tipo de cambio.</div>
+    `;
+    window.print();
   }
 
   function mostrarSesion() {
@@ -630,16 +756,32 @@
       <div class="line"><span class="lbl">Comisión vendedor</span><span class="val">− ${fmtUSD(c.com_vendedor_usd)}</span></div>
       <div class="line"><span class="lbl">Margen neto final</span><span class="val">${fmtUSD(c.margen_neto_usd)} (${fmtPct(c.margen_neto_pct)})</span></div>
       <div class="divider"></div>
-      <div class="line"><span class="lbl">IVA (${fmtPct(c.iva_pct)})</span><span class="val">+ ${fmtUSD(c.iva_usd)}</span></div>
-      ${c.incluye_colocacion ? `<div class="line"><span class="lbl">Colocación (${fmtPct(c.colocacion_pct)}, sin IVA)</span><span class="val">+ ${fmtUSD(c.colocacion_usd)}</span></div>` : ''}
-      <div class="line total"><span class="lbl">Precio final al cliente</span><span class="val">${fmtUSD(c.precio_final_usd)}</span></div>
+      ${bloquePrecioFinal(c)}
 
       <input id="clienteInput" type="text" placeholder="Nombre del cliente" style="width:100%; margin-top:16px; padding:10px; background:var(--stone-2); border:1px solid var(--line); border-radius:8px; color:var(--birch); font-family:'Inter'; font-size:13px;">
       <button class="btn btn-primary" id="guardarBtn">Guardar cotización</button>
+      <button class="btn btn-secondary" id="descargarBtn">Descargar presupuesto</button>
       <div id="statusMsg"></div>
     `;
 
     document.getElementById('guardarBtn').onclick = guardarCotizacion;
+    document.getElementById('descargarBtn').onclick = () => descargarPresupuesto(c, modeloSeleccionado.modelo);
+  }
+
+  /**
+   * Bloque de precio final, reutilizado en las dos vistas y en el detalle
+   * de cotizaciones guardadas. A pedido de Franco: el total destacado
+   * SIEMPRE se muestra SIN IVA, aclarando "+ IVA" -- el monto con IVA
+   * incluido queda como referencia chica debajo, no como el número grande.
+   */
+  function bloquePrecioFinal(c) {
+    const totalSinIva = c.pvp_usd + (c.incluye_colocacion ? c.colocacion_usd : 0);
+    return `
+      ${c.incluye_colocacion ? `<div class="line"><span class="lbl">Colocación (${fmtPct(c.colocacion_pct!=null?c.colocacion_pct:0.15)}, sin IVA)</span><span class="val">+ ${fmtUSD(c.colocacion_usd)}</span></div>` : ''}
+      <div class="line total"><span class="lbl">Total (+ IVA)</span><span class="val">${fmtUSD(totalSinIva)}</span></div>
+      <div class="line" style="opacity:.7; font-size:12px;"><span class="lbl">IVA (${fmtPct(c.iva_pct!=null?c.iva_pct:0.21)}) no incluido</span><span class="val">+ ${fmtUSD(c.iva_usd)}</span></div>
+      <div class="line" style="opacity:.55; font-size:11.5px;"><span class="lbl">Total con IVA</span><span class="val">${fmtUSD(c.precio_final_usd)}</span></div>
+    `;
   }
 
   function renderSummaryVendedor(c) {
@@ -657,16 +799,15 @@
       ${gadgetLines}
       <div class="divider"></div>
       <div class="line"><span class="lbl">Precio del sauna</span><span class="val">${fmtUSD(c.pvp_usd)}</span></div>
-      ${c.incluye_colocacion ? `<div class="line"><span class="lbl">Colocación (${fmtPct(c.colocacion_pct)}, sin IVA)</span><span class="val">+ ${fmtUSD(c.colocacion_usd)}</span></div>` : ''}
-      <div class="line"><span class="lbl">IVA (${fmtPct(c.iva_pct)})</span><span class="val">+ ${fmtUSD(c.iva_usd)}</span></div>
-      <div class="divider"></div>
-      <div class="line total"><span class="lbl">Precio final al cliente</span><span class="val">${fmtUSD(c.precio_final_usd)}</span></div>
+      ${bloquePrecioFinal(c)}
 
       <input id="clienteInput" type="text" placeholder="Nombre del cliente" style="width:100%; margin-top:16px; padding:10px; background:var(--stone-2); border:1px solid var(--line); border-radius:8px; color:var(--birch); font-family:'Inter'; font-size:13px;">
       <button class="btn btn-primary" id="guardarBtn">Guardar cotización</button>
+      <button class="btn btn-secondary" id="descargarBtn">Descargar presupuesto</button>
       <div id="statusMsg"></div>
     `;
     document.getElementById('guardarBtn').onclick = guardarCotizacion;
+    document.getElementById('descargarBtn').onclick = () => descargarPresupuesto(c, modeloSeleccionado.modelo);
   }
 
   async function guardarCotizacion() {
