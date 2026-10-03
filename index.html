@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Kokkai — Cotizador de Saunas Auroom</title>
+<title>Kokkai — Cotizador de Saunas</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -150,6 +150,21 @@
   }
   .cat-tab.active{ background:var(--ember); border-color:var(--ember); color:var(--charred-oak); font-weight:600; }
   .cat-tab:hover:not(.active){ border-color:var(--ember); color:var(--birch); }
+
+  /* --- Pestañas de marca (arriba de las categorías) --- */
+  .marca-tabs{ display:flex; gap:0; margin-bottom:16px; border-bottom:1px solid var(--line); }
+  .marca-tab{
+    padding:10px 22px; font-size:14px; font-weight:700; letter-spacing:1.4px; cursor:pointer;
+    color:var(--birch-dim); border-bottom:2px solid transparent; margin-bottom:-1px; transition:all .15s;
+  }
+  .marca-tab.active{ color:var(--ember-bright); border-bottom-color:var(--ember); }
+  .marca-tab:hover:not(.active){ color:var(--birch); }
+  .markup-editor{ display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .markup-editor input{
+    width:64px; background:var(--stone-2); border:1px solid var(--line); color:var(--birch);
+    border-radius:6px; padding:4px 8px; font:inherit;
+  }
+  .markup-editor .margen-hint{ font-size:12px; color:var(--birch-dim); }
 
   /* --- Grilla de modelos --- */
   .model-grid{
@@ -300,7 +315,7 @@
 <body>
 
 <div class="topbar">
-  <div class="brand"><img src="kokkai-isotipo.png" alt="Kokkai" class="brand-mark"> Kokkai <small>Cotizador de Saunas Auroom</small></div>
+  <div class="brand"><img src="kokkai-isotipo.png" alt="Kokkai" class="brand-mark"> Kokkai <small>Cotizador de Saunas</small></div>
   <div class="vendor-badge" id="loginBox">
     <input id="pinInput" type="password" inputmode="numeric" maxlength="6" placeholder="PIN" style="width:80px;">
     <button id="pinBtn" class="btn-login">Ingresar</button>
@@ -329,6 +344,7 @@
   <div class="main">
     <div id="modelSection">
       <div class="section-label">1 — Elegí el modelo</div>
+      <div class="marca-tabs" id="marcaTabs"></div>
       <div class="cat-tabs" id="catTabs"></div>
       <div class="model-grid" id="modelGrid"><div class="loading">Cargando catálogo…</div></div>
     </div>
@@ -339,11 +355,7 @@
       <div id="gadgetsBox"></div>
       <div class="colocacion-box">
         <input type="checkbox" id="colocacionCheck">
-        <div class="txt">
-          <b>Incluir colocación</b> — instalación eléctrica llave en mano de la acometida trifásica
-          próxima al sauna (deja la alimentación lista y protegida para conectar el calefactor;
-          no arma el sauna en sí). Siempre 15% del valor del sauna, <b>sin IVA</b>.
-        </div>
+        <div class="txt" id="colocacionTxt"></div>
       </div>
     </div>
   </div>
@@ -366,7 +378,42 @@
   let gadgetsSeleccionados = {}; // id -> {gadget, cantidad}
   let incluyeColocacion = false;
   let catFiltro = 'todas';
+  let marcaFiltro = 'AUROOM';
+  let markupOverride = null; // solo Franco: markup puntual para esta cotización (null = el de Config_Global)
   let calcActual = null;
+
+  // Datos propios de cada marca para la pantalla y el presupuesto.
+  const MARCAS_UI = {
+    AUROOM: {
+      nombre: 'Auroom', tab: 'AUROOM',
+      textoColocacion: 'instalación eléctrica llave en mano de la acometida trifásica próxima al sauna',
+      sitio: 'auroomwellness.com',
+      garantia: `<b>Garantía de fábrica Auroom: 1 año sobre el producto</b> desde la fecha de entrega, cubre defectos
+        de fabricación y de materiales. No cubre características naturales de la madera (pequeñas variaciones
+        de color o fisuras menores que no afectan la funcionalidad).
+        <br><br><b>Garantía Kokkai: 1 año sobre la instalación</b> desde la fecha de colocación.
+        <br><br><b>Importante:</b> para que ambas garantías tengan validez, el sauna debe ser instalado por Kokkai.
+        El calefactor y los equipos electrónicos llevan la garantía propia de su fabricante (HUUM u otro),
+        independiente de esta.`,
+    },
+    KOLO: {
+      nombre: 'Kolo Saunas', tab: 'KOLO SAUNAS',
+      textoColocacion: 'instalación eléctrica llave en mano de la alimentación monofásica dedicada próxima al sauna',
+      sitio: '',
+      garantia: `<b>Garantía de fábrica Kolo: 1 año sobre el producto</b> desde la fecha de entrega, incluido el
+        calefactor Harvia. Cubre defectos de fabricación y de materiales. No cubre características naturales de la
+        madera (pequeñas variaciones de color o fisuras menores que no afectan la funcionalidad).
+        <br><br><b>Garantía Kokkai: 1 año sobre la instalación</b> desde la fecha de colocación.
+        <br><br><b>Importante:</b> para que ambas garantías tengan validez, el sauna debe ser instalado por Kokkai.`,
+    },
+  };
+  const marcaUI = m => MARCAS_UI[m] || MARCAS_UI.AUROOM;
+  const marcaDe = m => (m && m.marca) || 'AUROOM';
+  const precioBase = m => marcaDe(m) === 'KOLO' ? m.precio_base_usd : m.precio_base_eur;
+  const fmtOrigen = (n, moneda) => moneda === 'USD' ? fmtUSD(n) : fmtEUR(n);
+  const precioBaseTxt = m => marcaDe(m) === 'KOLO' ? `${fmtUSD(m.precio_base_usd)} costo Kolo` : `${fmtEUR(m.precio_base_eur)} EXW`;
+  const margenDeMarkup = mk => mk / (1 + mk); // margen bruto sobre PVP que da un markup sobre costo
+  const puedeMarkup = () => !!(sesion && sesion.puede_editar_markup);
 
   const modelGrid = document.getElementById('modelGrid');
   const catTabs = document.getElementById('catTabs');
@@ -388,7 +435,7 @@
     loginMsg.textContent = '';
     const r = await apiPost({ action: 'login', pin });
     if (r.error) { loginMsg.textContent = 'PIN incorrecto'; pinInput.value=''; pinInput.focus(); return; }
-    sesion = { pin, nombre: r.nombre, rol: r.rol };
+    sesion = { pin, nombre: r.nombre, rol: r.rol, puede_editar_markup: !!r.puede_editar_markup };
     localStorage.setItem('kokkai_sauna_sesion', JSON.stringify(sesion));
     mostrarSesion();
   }
@@ -398,6 +445,7 @@
   document.getElementById('logoutLink').onclick = (e) => {
     e.preventDefault();
     sesion = null;
+    markupOverride = null;
     localStorage.removeItem('kokkai_sauna_sesion');
     document.getElementById('gerenciaPanel').style.display = 'none';
     mostrarSesion();
@@ -437,7 +485,7 @@
         <span class="cot-numero">${c.numero || '—'}</span>
         <span>${fmtFecha(c.fecha)}</span>
         <span>${c.cliente || '—'}</span>
-        <span>${c.modelo}${c.incluye_colocacion?' · colocación':''}</span>
+        <span>${c.marca==='KOLO'?'Kolo · ':''}${c.modelo}${c.incluye_colocacion?' · colocación':''}</span>
         <span class="precio">US$ ${Number(totalSinIva||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</span>
         <span><span class="cot-estado ${c.estado}">${c.estado}</span></span>
         <span>${sesion.rol==='gerencia' && c.estado==='enviada' ? `<button class="cot-approve-btn" data-id="${c.id}">Aprobar</button>` : ''}</span>
@@ -480,8 +528,10 @@
       const floorPct = c.margen_minimo_pct_actual*100;
       costosHtml = `
         <div class="divider"></div>
-        <div class="line"><span class="lbl">FOB total (EUR)</span><span class="val">${fmtEUR(c.fob_eur)}</span></div>
-        <div class="line"><span class="lbl">Tipo de cambio</span><span class="val">${c.tipo_cambio}</span></div>
+        ${c.moneda === 'USD'
+          ? `<div class="line"><span class="lbl">Costo ${marcaUI(c.marca).nombre} (USD)</span><span class="val">${fmtUSD(c.fob_origen)}</span></div>`
+          : `<div class="line"><span class="lbl">FOB total (EUR)</span><span class="val">${fmtEUR(c.fob_eur)}</span></div>
+        <div class="line"><span class="lbl">Tipo de cambio</span><span class="val">${c.tipo_cambio}</span></div>`}
         <div class="line"><span class="lbl">Costo nacionalizado (USD)</span><span class="val">${fmtUSD(c.costo_nacionalizado_usd)}</span></div>
         <div class="line"><span class="lbl">Markup</span><span class="val">${fmtPct(c.markup_pct)}</span></div>
         <div class="line"><span class="lbl">Margen bruto</span><span class="val">${fmtUSD(c.margen_bruto_usd)} (${fmtPct(c.margen_bruto_pct)})</span></div>
@@ -503,7 +553,7 @@
       <div class="line"><span class="lbl">Vendedor</span><span class="val">${c.vendedor||'—'}</span></div>
       <div class="line"><span class="lbl">Estado</span><span class="val"><span class="cot-estado ${c.estado}">${c.estado}</span></span></div>
       <div class="divider"></div>
-      <div class="line selected-item"><span class="lbl">${c.modelo.modelo || c.modelo}</span></div>
+      <div class="line selected-item"><span class="lbl">${marcaUI(c.marca).nombre} — ${c.modelo.modelo || c.modelo}</span></div>
       ${gadgetLines}
       <div class="divider"></div>
       <div class="line"><span class="lbl">Precio del sauna</span><span class="val">${fmtUSD(c.pvp_usd)}</span></div>
@@ -528,13 +578,16 @@
 
   async function descargarPresupuesto(c, modeloNombreOverride, clienteNombreOverride) {
     const familia = (c.modelo && c.modelo.familia) || (modeloSeleccionado && modeloSeleccionado.familia) || '';
+    const marca = c.marca || marcaDe(c.modelo) || marcaDe(modeloSeleccionado);
+    const ui = marcaUI(marca);
+    const alimentacion = (c.modelo && c.modelo.alimentacion) || (modeloSeleccionado && modeloSeleccionado.alimentacion) || '';
     const modeloNombre = modeloNombreOverride || (c.modelo && c.modelo.modelo) || (c.modelo) || (modeloSeleccionado && modeloSeleccionado.modelo) || '';
     const categoria = (c.modelo && c.modelo.categoria) || (modeloSeleccionado && modeloSeleccionado.categoria) || '';
     const clienteNombre = clienteNombreOverride || c.cliente || clienteSeleccionado.nombre || '';
     const clienteCuit = c.cliente_cuit || clienteSeleccionado.cuit || '';
     const clienteTelefono = c.cliente_telefono || clienteSeleccionado.telefono || '';
     const fotoUrl = fotoParaModelo({ familia, modelo: modeloNombre }) || fotosPorFamilia[familia] || '';
-    const paginaProducto = PAGINA_PRODUCTO[familia] || '';
+    const paginaProducto = marca === 'AUROOM' ? (PAGINA_PRODUCTO[familia] || '') : '';
     const gadgetNames = (c.gadgets_detalle || c.gadgets_seleccionados || []).map(g => {
       const nombre = g.nombre || (g.gadget && g.gadget.nombre) || '';
       const cant = g.cantidad > 1 ? ` ×${g.cantidad}` : '';
@@ -550,8 +603,11 @@
 
     // Ficha técnica eléctrica de referencia (6kW = calefactor más común de la gama HUUM DROP).
     // Si el sauna cotizado lleva un calefactor de otra potencia, esto es orientativo.
+    // Solo aplica a Auroom (HUUM); Kolo trae su requisito por modelo en 'alimentacion'.
     let specs = null;
-    try { specs = await api('colocacion_specs', { potencia_kw: 6 }); if (specs.error) specs = null; } catch(e) { specs = null; }
+    if (marca === 'AUROOM') {
+      try { specs = await api('colocacion_specs', { potencia_kw: 6 }); if (specs.error) specs = null; } catch(e) { specs = null; }
+    }
 
     const printArea = document.getElementById('printArea');
     const numeroCot = c.numero || 'BORRADOR (todavía sin guardar)';
@@ -574,8 +630,8 @@
         ${fotoUrl ? `<img src="${fotoUrl}">` : ''}
         <div>
           <div class="p-product-name">${modeloNombre}</div>
-          <div class="p-product-meta">${familia}${categoria?' · '+categoria:''}</div>
-          ${paginaProducto ? `<a class="p-link" href="${paginaProducto}">Ver ficha del modelo en auroomwellness.com →</a>` : ''}
+          <div class="p-product-meta">${ui.nombre} · ${familia}${categoria?' · '+categoria:''}</div>
+          ${paginaProducto ? `<a class="p-link" href="${paginaProducto}">Ver ficha del modelo en ${ui.sitio} →</a>` : ''}
         </div>
       </div>
 
@@ -597,12 +653,17 @@
 
       <div class="p-section-title">Requisitos de instalación</div>
       <div class="p-box">
+        ${marca === 'KOLO' ? `
+        <b>Requisito eléctrico${(c.modelo && c.modelo.calefactor) ? ' (calefactor ' + c.modelo.calefactor + ')' : ''}:</b> ${alimentacion || 'según manual del fabricante del calefactor.'}
+        La conexión final del calefactor debe hacerla siempre un electricista matriculado.
+        ` : `
         <b>Alimentación eléctrica trifásica requerida.</b> El calefactor del sauna necesita una acometida
         eléctrica trifásica dedicada, con protección térmica y cableado resistente al calor (tipo H07RN-F,
         nunca PVC estándar), y caja de conexión estanca cercana al equipo. A modo de referencia para un
         calefactor de ${specs ? specs.potencia_kw : 6} kW: térmica ${specs ? specs.termica : 'trifásica 3×10A'},
         cable ${specs ? specs.seccion_cable_mm2 : 'trifásico 5×1,5 mm²'}. La conexión final del calefactor
         debe hacerla siempre un electricista matriculado.
+        `}
         ${c.incluye_colocacion
           ? '<br><br><b>Esta cotización incluye la colocación</b>: Kokkai realiza la instalación eléctrica llave en mano de la acometida próxima al sauna, dejando la alimentación lista y protegida para conectar el calefactor.'
           : '<br><br>Esta cotización <b>no incluye</b> la colocación — la instalación eléctrica queda a cargo del cliente o de un electricista de su elección, siguiendo esta misma especificación.'}
@@ -610,13 +671,7 @@
 
       <div class="p-section-title">Garantía</div>
       <div class="p-box">
-        <b>Garantía de fábrica Auroom: 1 año sobre el producto</b> desde la fecha de entrega, cubre defectos
-        de fabricación y de materiales. No cubre características naturales de la madera (pequeñas variaciones
-        de color o fisuras menores que no afectan la funcionalidad).
-        <br><br><b>Garantía Kokkai: 1 año sobre la instalación</b> desde la fecha de colocación.
-        <br><br><b>Importante:</b> para que ambas garantías tengan validez, el sauna debe ser instalado por Kokkai.
-        El calefactor y los equipos electrónicos llevan la garantía propia de su fabricante (HUUM u otro),
-        independiente de esta.
+        ${ui.garantia}
       </div>
 
       <div class="p-footer">Kokkai Thermo Wood · Presupuesto N° ${numeroCot} válido por ${validezDias} días desde la fecha de emisión. Precios en dólares estadounidenses, sujetos a variación del tipo de cambio.</div>
@@ -653,11 +708,6 @@
     }
   }
 
-  // Recuperar sesión guardada (evita tener que loguearse en cada visita)
-  try {
-    const guardada = JSON.parse(localStorage.getItem('kokkai_sauna_sesion') || 'null');
-    if (guardada && guardada.pin) { sesion = guardada; mostrarSesion(); }
-  } catch(e) {}
 
   async function renderGerenciaPanel() {
     const panel = document.getElementById('gerenciaPanel');
@@ -668,7 +718,14 @@
     const modoTC = configGlobal.tipo_cambio_modo === 'manual' ? 'manual' : 'auto';
     panel.innerHTML = `
       <span class="titulo">Panel de gerencia</span>
-      <div class="campo">Markup <input id="cfgMarkup" type="number" step="0.01" value="${(configGlobal.markup_default_pct*100).toFixed(0)}"> %</div>
+      <div class="campo">Markup
+        ${configGlobal.puede_editar_markup
+          ? `<input id="cfgMarkup" type="number" step="1" value="${(configGlobal.markup_default_pct*100).toFixed(0)}"> %`
+          : `<b>${(configGlobal.markup_default_pct*100).toFixed(0)} %</b>`}
+        <span id="cfgMargenHint" style="font-size:11px; color:var(--birch-dim);">→ margen bruto ${fmtPct(margenDeMarkup(Number(configGlobal.markup_default_pct)))}</span>
+      </div>
+      <div class="campo">Nacionalización Auroom <input id="cfgNacAuroom" type="number" step="1" value="${(configGlobal.coef_nacionalizacion_pct*100).toFixed(0)}"> %</div>
+      <div class="campo">Nacionalización Kolo <input id="cfgNacKolo" type="number" step="1" value="${(configGlobal.kolo_coef_nacionalizacion_pct*100).toFixed(0)}"> %</div>
       <div class="campo">Piso margen <input id="cfgPiso" type="number" step="0.01" value="${(configGlobal.margen_minimo_pct*100).toFixed(0)}"> %</div>
       <div class="campo">Techo margen <input id="cfgTecho" type="number" step="0.01" value="${configGlobal.margen_maximo_pct!=null?(configGlobal.margen_maximo_pct*100).toFixed(0):''}" placeholder="sin límite"> %</div>
       <div class="campo">
@@ -684,6 +741,10 @@
       <button id="cfgGuardar">Guardar</button>
       <span class="saved-msg" id="cfgMsg"></span>
     `;
+    const cfgMarkupEl = document.getElementById('cfgMarkup');
+    if (cfgMarkupEl) cfgMarkupEl.oninput = () => {
+      document.getElementById('cfgMargenHint').textContent = '→ margen bruto ' + fmtPct(margenDeMarkup(Number(cfgMarkupEl.value) / 100));
+    };
     document.getElementById('cfgModoTC').onchange = (e) => {
       document.getElementById('cfgTCManual').disabled = e.target.value !== 'manual';
     };
@@ -697,10 +758,12 @@
     };
     document.getElementById('cfgGuardar').onclick = async () => {
       const cambios = {
-        markup_default_pct: Number(document.getElementById('cfgMarkup').value) / 100,
         margen_minimo_pct: Number(document.getElementById('cfgPiso').value) / 100,
+        coef_nacionalizacion_pct: Number(document.getElementById('cfgNacAuroom').value) / 100,
+        kolo_coef_nacionalizacion_pct: Number(document.getElementById('cfgNacKolo').value) / 100,
         tipo_cambio_modo: document.getElementById('cfgModoTC').value,
       };
+      if (cfgMarkupEl) cambios.markup_default_pct = Number(cfgMarkupEl.value) / 100;
       const techoVal = document.getElementById('cfgTecho').value;
       if (techoVal !== '') cambios.margen_maximo_pct = Number(techoVal) / 100;
       if (cambios.tipo_cambio_modo === 'manual') {
@@ -712,7 +775,12 @@
       msg.textContent = 'Guardando…';
       const res = await apiPost({ action: 'actualizar_config', cambios, pin: sesion.pin });
       if (res.error) { msg.textContent = res.error; msg.style.color = 'var(--rust-warn)'; }
-      else { msg.textContent = 'Guardado ✓'; msg.style.color = 'var(--pine-bright)'; configGlobal = res; if (calcActual) recalcular(); }
+      else {
+        msg.textContent = 'Guardado ✓'; msg.style.color = 'var(--pine-bright)';
+        configGlobal = Object.assign({}, configGlobal, res);
+        if (cambios.markup_default_pct !== undefined) markupOverride = null; // nuevo default -> se descarta el puntual
+        if (calcActual) recalcular();
+      }
     };
   }
 
@@ -788,12 +856,29 @@
     if (data.error) { modelGrid.innerHTML = `<div class="loading">Error cargando catálogo: ${data.error}</div>`; return; }
     modelos = data;
     fotosPorFamilia = fotos.error ? {} : fotos;
+    renderMarcaTabs();
     renderCatTabs();
     renderModelGrid();
   }
 
+  const modelosDeMarca = () => modelos.filter(m => marcaDe(m) === marcaFiltro);
+
+  function renderMarcaTabs() {
+    const el = document.getElementById('marcaTabs');
+    el.innerHTML = Object.keys(MARCAS_UI).map(k =>
+      `<div class="marca-tab ${k===marcaFiltro?'active':''}" data-marca="${k}">${MARCAS_UI[k].tab}</div>`
+    ).join('');
+    el.querySelectorAll('.marca-tab').forEach(t => {
+      t.onclick = () => {
+        if (t.dataset.marca === marcaFiltro) return;
+        marcaFiltro = t.dataset.marca; catFiltro = 'todas';
+        renderMarcaTabs(); renderCatTabs(); renderModelGrid();
+      };
+    });
+  }
+
   function renderCatTabs() {
-    const cats = ['todas', ...new Set(modelos.map(m => m.categoria))];
+    const cats = ['todas', ...new Set(modelosDeMarca().map(m => m.categoria))];
     catTabs.innerHTML = cats.map(c =>
       `<div class="cat-tab ${c===catFiltro?'active':''}" data-cat="${c}">${c==='todas'?'Todas':c}</div>`
     ).join('');
@@ -805,31 +890,37 @@
   function esGerencia() { return !!(sesion && sesion.rol === 'gerencia'); }
 
   function renderModelGrid() {
-    const list = catFiltro === 'todas' ? modelos : modelos.filter(m => m.categoria === catFiltro);
+    const deMarca = modelosDeMarca();
+    const list = catFiltro === 'todas' ? deMarca : deMarca.filter(m => m.categoria === catFiltro);
+    if (!list.length) { modelGrid.innerHTML = `<div class="loading">Todavía no hay modelos cargados para ${marcaUI(marcaFiltro).nombre}.</div>`; return; }
     modelGrid.innerHTML = list.map(m => `
       <div class="model-card ${modeloSeleccionado && modeloSeleccionado.id===m.id?'selected':''}" data-id="${m.id}">
         <img class="photo" src="" data-id="${m.id}" alt="${m.modelo}" onerror="this.style.display='none'">
         <div class="info">
           <div class="fam">${m.familia}</div>
           <div class="nombre">${m.modelo}</div>
-          ${esGerencia() ? `<div class="precio">${fmtEUR(m.precio_base_eur)} EXW</div>` : ''}
+          ${esGerencia() ? `<div class="precio">${precioBaseTxt(m)}</div>` : ''}
         </div>
       </div>
     `).join('');
     modelGrid.querySelectorAll('.model-card').forEach(el => {
-      el.onclick = () => seleccionarModelo(Number(el.dataset.id));
+      el.onclick = () => seleccionarModelo(el.dataset.id);
       const img = el.querySelector('img');
-      const m = modelos.find(x => x.id === Number(img.dataset.id));
+      const m = modelos.find(x => String(x.id) === img.dataset.id);
       const url = fotoParaModelo(m);
       if (url) img.src = url; else img.style.display = 'none';
     });
   }
 
   async function seleccionarModelo(id) {
-    modeloSeleccionado = modelos.find(m => m.id === id);
+    modeloSeleccionado = modelos.find(m => String(m.id) === String(id));
     gadgetsSeleccionados = {};
     incluyeColocacion = false;
     colocacionCheck.checked = false;
+    document.getElementById('colocacionTxt').innerHTML =
+      `<b>Incluir colocación</b> — ${marcaUI(marcaDe(modeloSeleccionado)).textoColocacion}
+      (deja la alimentación lista y protegida para conectar el calefactor; no arma el sauna en sí).
+      Siempre 15% del valor del sauna, <b>sin IVA</b>.`;
     renderModelGrid();
 
     fichaSection.style.display = 'block';
@@ -850,8 +941,12 @@
       <img src="${foto}" onerror="this.style.opacity=0">
       <div>
         <h2>${m.modelo}</h2>
-        <div class="meta">${m.familia} · ${m.categoria}${m.tamano!=='-'?' · Talle '+m.tamano:''}${m.material_color!=='-'?' · '+m.material_color:''}</div>
-        ${esGerencia() ? `<div class="base-precio">${fmtEUR(m.precio_base_eur)} EXW (sin heater, sin extras)</div>` : ''}
+        ${marcaDe(m) === 'KOLO'
+          ? `<div class="meta">${m.familia} · ${m.tamano} · ${m.material_color}${m.calefactor?' · '+m.calefactor:''}</div>`
+          : `<div class="meta">${m.familia} · ${m.categoria}${m.tamano!=='-'?' · Talle '+m.tamano:''}${m.material_color!=='-'?' · '+m.material_color:''}</div>`}
+        ${esGerencia() ? `<div class="base-precio">${marcaDe(m) === 'KOLO'
+          ? `${fmtUSD(m.precio_base_usd)} costo Kolo (incluye calefactor y embalaje, sin flete)`
+          : `${fmtEUR(m.precio_base_eur)} EXW (sin heater, sin extras)`}</div>` : ''}
         ${m.notas ? `<div class="meta" style="margin-top:6px;">${m.notas}</div>` : ''}
       </div>
     `;
@@ -877,7 +972,8 @@
               <input type="checkbox" data-id="${g.id}" ${marcado?'checked':''}>
               <div class="nombre">${g.nombre}${g.notas?`<small>${g.notas}</small>`:''}</div>
             </div>
-            ${esGerencia() ? `<div class="precio">${g.precio_eur!=null ? '+ '+fmtEUR(g.precio_eur) : 'consultar'}</div>` : ''}
+            ${esGerencia() ? (() => { const kolo = marcaDe(modeloSeleccionado) === 'KOLO'; const pr = kolo ? g.precio_usd : g.precio_eur;
+              return `<div class="precio">${pr!=null && pr!=='' ? '+ '+(kolo ? fmtUSD(pr) : fmtEUR(pr)) : 'consultar'}</div>`; })() : ''}
           </div>
         `; }).join('')}
       </div>
@@ -906,6 +1002,7 @@
       gadget_ids: Object.keys(gadgetsSeleccionados),
       incluye_colocacion: incluyeColocacion
     };
+    if (puedeMarkup() && markupOverride != null) input.markup_pct = markupOverride;
     const calc = await apiPost({action:'cotizar', input, pin: sesion ? sesion.pin : ''});
     if (calc.error) { summaryContent.innerHTML = `<div class="status-msg status-err">${calc.error}</div>`; return; }
     calcActual = calc;
@@ -920,7 +1017,7 @@
     const gadgetLines = c.gadgets_seleccionados.map(s => `
       <div class="line selected-item">
         <span class="lbl">${s.gadget.nombre}${s.cantidad>1?' ×'+s.cantidad:''}</span>
-        <span class="val">${fmtEUR(s.subtotal_eur)}</span>
+        <span class="val">${fmtOrigen(s.subtotal_origen, c.moneda)}</span>
       </div>
     `).join('');
 
@@ -930,14 +1027,23 @@
     const datosClienteHtml = await renderDatosCliente();
 
     summaryContent.innerHTML = `
-      <div class="line"><span class="lbl">${modeloSeleccionado.modelo}</span><span class="val">${fmtEUR(modeloSeleccionado.precio_base_eur)}</span></div>
+      <div class="line"><span class="lbl">${modeloSeleccionado.modelo}</span><span class="val">${fmtOrigen(precioBase(modeloSeleccionado), c.moneda)}</span></div>
       ${gadgetLines}
       <div class="divider"></div>
-      <div class="line"><span class="lbl">FOB total (EUR)</span><span class="val">${fmtEUR(c.fob_eur)}</span></div>
+      ${c.moneda === 'USD'
+        ? `<div class="line"><span class="lbl">Costo ${marcaUI(c.marca).nombre} (USD)</span><span class="val">${fmtUSD(c.fob_usd)}</span></div>`
+        : `<div class="line"><span class="lbl">FOB total (EUR)</span><span class="val">${fmtEUR(c.fob_eur)}</span></div>
       <div class="line"><span class="lbl">Tipo de cambio</span><span class="val">${c.tipo_cambio}</span></div>
-      <div class="line"><span class="lbl">FOB (USD)</span><span class="val">${fmtUSD(c.fob_usd)}</span></div>
+      <div class="line"><span class="lbl">FOB (USD)</span><span class="val">${fmtUSD(c.fob_usd)}</span></div>`}
       <div class="line"><span class="lbl">Costo nacionalizado (+${fmtPct(c.coef_nacionalizacion_pct)})</span><span class="val">${fmtUSD(c.costo_nacionalizado_usd)}</span></div>
       <div class="divider"></div>
+      ${puedeMarkup() ? `
+      <div class="line markup-editor">
+        <span class="lbl">Markup</span>
+        <input id="markupInput" type="number" step="1" value="${(c.markup_pct*100).toFixed(0)}"> %
+        <span class="margen-hint" id="markupMargenHint">→ margen bruto ${fmtPct(margenDeMarkup(c.markup_pct))}</span>
+        ${markupOverride != null ? `<a href="#" id="markupResetLink" style="font-size:12px;">volver al ${(configGlobal ? configGlobal.markup_default_pct*100 : 80).toFixed(0)}%</a>` : ''}
+      </div>` : ''}
       <div class="line"><span class="lbl">PVP (markup ${fmtPct(c.markup_pct)})</span><span class="val">${fmtUSD(c.pvp_usd)}</span></div>
       <div class="line"><span class="lbl">Margen bruto</span><span class="val">${fmtUSD(c.margen_bruto_usd)} (${fmtPct(c.margen_bruto_pct)})</span></div>
 
@@ -966,8 +1072,27 @@
     `;
 
     wireDatosCliente();
+    wireMarkupEditor();
     document.getElementById('guardarBtn').onclick = guardarCotizacion;
     document.getElementById('descargarBtn').onclick = () => { leerDatosEntregaDelForm(); descargarPresupuesto(c, modeloSeleccionado.modelo); };
+  }
+
+  // Markup puntual (solo Franco): el margen se actualiza al tipear y la
+  // cotización se recalcula en el servidor al confirmar el valor.
+  function wireMarkupEditor() {
+    const inp = document.getElementById('markupInput');
+    if (!inp) return;
+    inp.oninput = () => {
+      document.getElementById('markupMargenHint').textContent = '→ margen bruto ' + fmtPct(margenDeMarkup(Number(inp.value) / 100));
+    };
+    inp.onchange = () => {
+      const v = Number(inp.value);
+      if (!isFinite(v) || v < 0) return;
+      markupOverride = v / 100;
+      recalcular();
+    };
+    const reset = document.getElementById('markupResetLink');
+    if (reset) reset.onclick = (e) => { e.preventDefault(); markupOverride = null; recalcular(); };
   }
 
   /**
@@ -1225,6 +1350,7 @@
       plazo_entrega: datosEntrega.plazo_entrega,
       estado: 'enviada'
     };
+    if (puedeMarkup() && markupOverride != null) input.markup_pct = markupOverride;
     try {
       const res = await apiPost({action:'guardar', input, pin: sesion.pin});
       if (res.error) throw new Error(res.error);
@@ -1234,6 +1360,22 @@
     }
     btn.disabled = false; btn.textContent = 'Guardar cotización';
   }
+
+  // Recuperar sesión guardada (evita tener que loguearse en cada visita)
+  try {
+    const guardada = JSON.parse(localStorage.getItem('kokkai_sauna_sesion') || 'null');
+    if (guardada && guardada.pin) {
+      sesion = guardada; mostrarSesion();
+      // Refresca rol/permisos guardados (p.ej. sesiones previas al permiso de markup).
+      apiPost({ action: 'login', pin: guardada.pin }).then(r => {
+        if (r.error) return;
+        sesion = { pin: guardada.pin, nombre: r.nombre, rol: r.rol, puede_editar_markup: !!r.puede_editar_markup };
+        localStorage.setItem('kokkai_sauna_sesion', JSON.stringify(sesion));
+        mostrarSesion();
+        if (modeloSeleccionado) recalcular();
+      }).catch(() => {});
+    }
+  } catch(e) {}
 
   init();
 })();
