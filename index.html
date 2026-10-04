@@ -285,6 +285,17 @@
   }
   .btn-mini:hover{ opacity:.85; }
   .mini-msg{ font-size:11.5px; color:var(--birch-dim); margin-left:8px; }
+  .interno-tag{ color:#C9A227; font-weight:700; text-transform:none; letter-spacing:0; }
+  .com-row{ display:flex; gap:8px; align-items:center; margin-bottom:8px; }
+  .com-row select, .com-row input[type=number]{
+    background:var(--stone-2); border:1px solid var(--line); color:var(--birch);
+    padding:8px 10px; border-radius:8px; font-family:'Inter'; font-size:13px;
+  }
+  .com-row select{ flex:1; }
+  .com-row input[type=number]{ width:80px; }
+  .com-check{ display:flex; align-items:center; gap:8px; font-size:13px; color:var(--birch); cursor:pointer; margin:6px 0; }
+  .com-check input{ width:16px; height:16px; accent-color:var(--ember); }
+  .btn-pct{ background:var(--stone-2); border:1px solid var(--line); color:var(--birch-dim); border-radius:6px; padding:4px 8px; font-size:11px; cursor:pointer; }
 
   /* --- Presupuesto imprimible --- */
   #printArea{ display:none; }
@@ -541,9 +552,7 @@
           <div class="gauge"><div class="floor-mark" style="left:${floorPct}%"></div><div class="fill" style="width:${gaugePct}%; background:${margenColor};"></div></div>
           <div class="gauge-pct" style="color:${margenColor}">${fmtPct(c.margen_bruto_pct)}</div>
         </div>
-        <div class="line"><span class="lbl">IIBB</span><span class="val">− ${fmtUSD(c.iibb_usd)}</span></div>
-        <div class="line"><span class="lbl">Comisión arquitecto</span><span class="val">− ${fmtUSD(c.com_arquitecto_usd)}</span></div>
-        <div class="line"><span class="lbl">Comisión vendedor</span><span class="val">− ${fmtUSD(c.com_vendedor_usd)}</span></div>
+        ${lineasDescuentos(c)}
         <div class="line"><span class="lbl">Margen neto final</span><span class="val">${fmtUSD(c.margen_neto_usd)} (${fmtPct(c.margen_neto_pct)})</span></div>
       `;
     }
@@ -788,6 +797,7 @@
   const fmtEUR = n => '€ ' + Number(n||0).toLocaleString('es-AR', {maximumFractionDigits:0});
   const fmtUSD = n => 'US$ ' + Number(n||0).toLocaleString('es-AR', {maximumFractionDigits:0});
   const fmtPct = n => (Number(n||0)*100).toFixed(1) + '%';
+  const escAttr = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 
   async function api(action, params) {
     const qs = params ? '&' + new URLSearchParams(params).toString() : '';
@@ -850,6 +860,32 @@
   let estudioSeleccionado = {}; // {id, nombre, contacto, telefono, comisionPctDefault}
   let datosEntrega = { condiciones_pago:'', validez_dias:7, lugar_entrega:'', plazo_entrega:'', nombre_obra:'' };
 
+  // Comisiones e IIBB — mismo criterio que el cotizador de thermowood
+  // (listasdeprecios/cotizador.html): vendedor con su % (Christian 8%,
+  // Franco 0%, editable, botón rápido 3%), comisión de arquitecto solo si se
+  // tilda (toma el % del estudio elegido), e IIBB imputable o no.
+  const VENDEDORES = ['Franco Faggioni', 'Christian Holler'];
+  const defaultComVend = v => v === 'Christian Holler' ? 8 : 0;
+  let comis = null;
+  function comisEstado() {
+    if (!comis) {
+      const vend = (sesion && sesion.nombre === 'Franco Faggioni') ? 'Franco Faggioni' : 'Christian Holler';
+      comis = { vendedor: vend, vendPct: defaultComVend(vend), arq: false, arqPct: null, iibb: true };
+    }
+    return comis;
+  }
+  function inputComisiones() {
+    const k = comisEstado();
+    return {
+      vendedor_nombre: k.vendedor,
+      comision_vendedor_pct: k.vendPct,
+      aplica_comision_arquitecto: k.arq,
+      comision_arquitecto_pct: k.arqPct, // null -> el backend usa el % del estudio elegido (o 5%)
+      estudio_id: estudioSeleccionado.id || null,
+      aplica_iibb: k.iibb,
+    };
+  }
+
   async function init() {
     // Un solo pedido para modelos y otro para fotos (en paralelo), en vez de
     // pedir la ficha completa por cada una de las 110 tarjetas.
@@ -866,6 +902,7 @@
   // clientes/estudios dependen del PIN -> se vuelven a pedir.
   async function recargarDatosDeSesion() {
     clientesCache = null; estudiosCache = null;
+    comis = null; // cada usuario arranca con sus defaults de comisión (como thermowood)
     const data = await apiPost({ action: 'modelos', pin: sesion ? sesion.pin : '' });
     if (data.error) return;
     modelos = data;
@@ -1014,11 +1051,12 @@
 
   async function recalcular() {
     if (!modeloSeleccionado) return;
-    const input = {
+    if (document.getElementById('nombreObraInput')) leerDatosEntregaDelForm(); // el resumen se re-dibuja: no perder lo tipeado
+    const input = Object.assign({
       modelo_id: modeloSeleccionado.id,
       gadget_ids: Object.keys(gadgetsSeleccionados),
       incluye_colocacion: incluyeColocacion
-    };
+    }, inputComisiones());
     if (puedeMarkup() && markupOverride != null) input.markup_pct = markupOverride;
     const calc = await apiPost({action:'cotizar', input, pin: sesion ? sesion.pin : ''});
     if (calc.error) { summaryContent.innerHTML = `<div class="status-msg status-err">${calc.error}</div>`; return; }
@@ -1075,9 +1113,7 @@
       ${c.margen_bajo_el_piso ? `<div class="warn-box">Margen por debajo del piso de ${fmtPct(c.margen_minimo_pct)}. Guardar esta cotización va a requerir aprobación de gerencia.</div>` : ''}
 
       <div class="divider"></div>
-      <div class="line"><span class="lbl">IIBB</span><span class="val">− ${fmtUSD(c.iibb_usd)}</span></div>
-      <div class="line"><span class="lbl">Comisión arquitecto</span><span class="val">− ${fmtUSD(c.com_arquitecto_usd)}</span></div>
-      <div class="line"><span class="lbl">Comisión vendedor</span><span class="val">− ${fmtUSD(c.com_vendedor_usd)}</span></div>
+      ${lineasDescuentos(c)}
       <div class="line"><span class="lbl">Margen neto final</span><span class="val">${fmtUSD(c.margen_neto_usd)} (${fmtPct(c.margen_neto_pct)})</span></div>
       <div class="divider"></div>
       ${bloquePrecioFinal(c)}
@@ -1142,7 +1178,7 @@
         <label>Cliente${sesion ? '' : ' — iniciá sesión para ver la lista de clientes'}</label>
         <select id="clienteSelect">
           <option value="">— Elegir cliente existente —</option>
-          ${clientes.map(c => `<option value="${c.id}">${c.nombre}${c.cuit?' ('+c.cuit+')':''}</option>`).join('')}
+          ${clientes.map(c => `<option value="${c.id}" ${c.id===clienteSeleccionado.id?'selected':''}>${c.nombre}${c.cuit?' ('+c.cuit+')':''}</option>`).join('')}
           <option value="__nuevo__">+ Cliente nuevo</option>
         </select>
       </div>
@@ -1163,7 +1199,7 @@
         <label>Estudio de arquitectura (opcional)</label>
         <select id="estudioSelect">
           <option value="">— Sin estudio —</option>
-          ${estudios.map(e => `<option value="${e.id}">${e.nombre}${e.comisionPctDefault != null && e.comisionPctDefault !== '' ? ' (' + e.comisionPctDefault + '%)' : ''}</option>`).join('')}
+          ${estudios.map(e => `<option value="${e.id}" ${e.id===estudioSeleccionado.id?'selected':''}>${e.nombre}${e.comisionPctDefault != null && e.comisionPctDefault !== '' ? ' (' + e.comisionPctDefault + '%)' : ''}</option>`).join('')}
           <option value="__nuevo__">+ Estudio nuevo</option>
         </select>
       </div>
@@ -1180,21 +1216,58 @@
         <span class="mini-msg" id="estudioMsg"></span>
       </div>
 
+      ${bloqueComisiones()}
+
       <div class="cliente-row" style="margin-top:12px;">
-        <input id="nombreObraInput" placeholder="Nombre de la obra (opcional)">
+        <input id="nombreObraInput" placeholder="Nombre de la obra (opcional)" value="${escAttr(datosEntrega.nombre_obra)}">
         <input id="validezInput" type="number" placeholder="Validez (días)" value="${datosEntrega.validez_dias}">
       </div>
       <div class="cliente-row">
-        <input id="condPagoInput" placeholder="Condiciones de pago">
-        <input id="plazoEntregaInput" placeholder="Plazo de entrega">
+        <input id="condPagoInput" placeholder="Condiciones de pago" value="${escAttr(datosEntrega.condiciones_pago)}">
+        <input id="plazoEntregaInput" placeholder="Plazo de entrega" value="${escAttr(datosEntrega.plazo_entrega)}">
       </div>
       <div class="cliente-row">
-        <input id="lugarEntregaInput" placeholder="Lugar de entrega" style="grid-column:1/-1;">
+        <input id="lugarEntregaInput" placeholder="Lugar de entrega" style="grid-column:1/-1;" value="${escAttr(datosEntrega.lugar_entrega)}">
       </div>
     `;
   }
 
+  function bloqueComisiones() {
+    const k = comisEstado();
+    return `
+      <label class="com-check">
+        <input type="checkbox" id="arqCheck" ${k.arq?'checked':''}> Comisión arquitecto <span class="interno-tag">(interno)</span>
+        <input type="number" id="arqPctInput" min="0" max="100" step="0.5" style="width:70px; margin-left:auto;"
+          value="${k.arqPct!=null ? k.arqPct : ''}" placeholder="${estudioSeleccionado.id ? 'estudio' : '5'}"> %
+      </label>
+      <div class="cliente-field" style="margin-top:10px;">
+        <label>Vendedor · % comisión <span class="interno-tag">(interno, no va al PDF)</span></label>
+        <div class="com-row">
+          <select id="vendSelect">${VENDEDORES.map(v => `<option ${v===k.vendedor?'selected':''}>${v}</option>`).join('')}</select>
+          <input type="number" id="vendPctInput" min="0" max="100" step="0.5" value="${k.vendPct}"> %
+          <button type="button" class="btn-pct" id="vendPct3" title="Comisión de 3% (se elige a mano)">3%</button>
+        </div>
+      </div>
+      ${esGerencia() ? `
+      <label class="com-check">
+        <input type="checkbox" id="iibbCheck" ${k.iibb?'checked':''}> Imputar IIBB${configGlobal && configGlobal.iibb_pct!=null ? ' ('+fmtPct(configGlobal.iibb_pct)+')' : ''} <span class="interno-tag">(interno)</span>
+      </label>` : ''}
+    `;
+  }
+
+  function wireComisiones() {
+    const k = comisEstado();
+    const on = (id, ev, fn) => { const el = document.getElementById(id); if (el) el[ev] = fn; };
+    on('arqCheck', 'onchange', e => { k.arq = e.target.checked; recalcular(); });
+    on('arqPctInput', 'onchange', e => { k.arqPct = e.target.value === '' ? null : Number(e.target.value); if (k.arq) recalcular(); });
+    on('vendSelect', 'onchange', e => { k.vendedor = e.target.value; k.vendPct = defaultComVend(k.vendedor); recalcular(); });
+    on('vendPctInput', 'onchange', e => { k.vendPct = Number(e.target.value) || 0; recalcular(); });
+    on('vendPct3', 'onclick', () => { k.vendPct = 3; recalcular(); });
+    on('iibbCheck', 'onchange', e => { k.iibb = e.target.checked; recalcular(); });
+  }
+
   function wireDatosCliente() {
+    wireComisiones();
     const clienteSelect = document.getElementById('clienteSelect');
     const clienteNuevoBox = document.getElementById('clienteNuevoBox');
     clienteSelect.onchange = () => {
@@ -1239,6 +1312,9 @@
         estudioNuevoBox.style.display = 'none';
         estudioSeleccionado = estudiosCache.find(e => e.id === estudioSelect.value) || {};
       }
+      const pctEst = estudioSeleccionado.comisionPctDefault;
+      comisEstado().arqPct = (pctEst != null && pctEst !== '') ? Number(pctEst) : null;
+      recalcular();
     };
     document.getElementById('estudioGuardarBtn').onclick = async () => {
       const nombre = document.getElementById('estudioNombreNuevo').value.trim();
@@ -1275,6 +1351,16 @@
     return datosEntrega;
   }
 
+  // Líneas internas de descuentos al margen, como el boxInterno de thermowood:
+  // si no se imputa, muestra "—" en vez del monto.
+  function lineasDescuentos(c, conIibb = true) {
+    const linea = (lbl, aplica, monto) =>
+      `<div class="line"><span class="lbl">${lbl}</span><span class="val">${aplica && monto > 0 ? '− ' + fmtUSD(monto) : '—'}</span></div>`;
+    return (conIibb ? linea(`IIBB${c.aplica_iibb === false ? ' (no imputado)' : (c.iibb_pct != null ? ' (' + fmtPct(c.iibb_pct) + ')' : '')}`, c.aplica_iibb !== false, c.iibb_usd) : '') +
+      linea(`Comisión arquitecto (${c.aplica_comision_arquitecto === false ? 'no imputada' : (c.comision_arquitecto_pct != null ? c.comision_arquitecto_pct + '%' : '')})`, c.aplica_comision_arquitecto !== false, c.com_arquitecto_usd) +
+      linea(`Comisión vendedor${c.vendedor_nombre ? ' — ' + c.vendedor_nombre : ''} (${c.comision_vendedor_pct != null ? c.comision_vendedor_pct : 0}%)`, true, c.com_vendedor_usd);
+  }
+
   function bloquePrecioFinal(c) {
     const totalSinIva = c.pvp_usd + (c.incluye_colocacion ? c.colocacion_usd : 0);
     return `
@@ -1303,6 +1389,9 @@
       <div class="divider"></div>
       <div class="line"><span class="lbl">Precio del sauna</span><span class="val">${fmtUSD(c.pvp_usd)}</span></div>
       ${bloquePrecioFinal(c)}
+      ${sesion ? `<div class="divider"></div>
+      <div class="line" style="font-size:11px; opacity:.7;"><span class="lbl">Solo interno — no va al cliente</span></div>
+      ${lineasDescuentos(c, false)}` : ''}
 
       ${datosClienteHtml}
       <button class="btn btn-primary" id="guardarBtn">Guardar cotización</button>
@@ -1359,7 +1448,6 @@
       cliente_cuit: clienteSeleccionado.cuit || '',
       cliente_telefono: clienteSeleccionado.telefono || '',
       cliente_email: clienteSeleccionado.email || '',
-      estudio_id: estudioSeleccionado.id || null,
       estudio_nombre: estudioSeleccionado.nombre || '',
       nombre_obra: datosEntrega.nombre_obra,
       validez_dias: datosEntrega.validez_dias,
@@ -1368,6 +1456,7 @@
       plazo_entrega: datosEntrega.plazo_entrega,
       estado: 'enviada'
     };
+    Object.assign(input, inputComisiones());
     if (puedeMarkup() && markupOverride != null) input.markup_pct = markupOverride;
     try {
       const res = await apiPost({action:'guardar', input, pin: sesion.pin});
