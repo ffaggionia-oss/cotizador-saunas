@@ -840,18 +840,35 @@
   const fmtPct = n => (Number(n||0)*100).toFixed(1) + '%';
   const escAttr = v => String(v == null ? '' : v).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
 
+  // Apps Script a veces tarda o devuelve una página de error de Google (404
+  // HTML) en vez de JSON. Antes eso rompía en res.json() y la pantalla quedaba
+  // colgada en "Cargando…". Ahora se reintenta 2 veces y, si sigue fallando,
+  // se devuelve {error} para que la pantalla lo muestre.
+  async function fetchJson(url, opts) {
+    const esperas = [1500, 3500];
+    let ultimo = '';
+    for (let intento = 0; intento <= esperas.length; intento++) {
+      try {
+        const res = await fetch(url, opts);
+        const txt = await res.text();
+        try { return JSON.parse(txt); } catch (e) { ultimo = 'respuesta inválida del servidor (HTTP ' + res.status + ')'; }
+      } catch (e) {
+        ultimo = 'sin conexión con el servidor';
+      }
+      if (intento < esperas.length) await new Promise(r => setTimeout(r, esperas[intento]));
+    }
+    return { error: 'El servidor de Google no respondió bien (' + ultimo + '). Probá de nuevo en unos segundos.' };
+  }
   async function api(action, params) {
     const qs = params ? '&' + new URLSearchParams(params).toString() : '';
-    const res = await fetch(`${APPS_SCRIPT_URL}?action=${action}${qs}`);
-    return res.json();
+    return fetchJson(`${APPS_SCRIPT_URL}?action=${action}${qs}`);
   }
   async function apiPost(body) {
-    const res = await fetch(APPS_SCRIPT_URL, {
+    return fetchJson(APPS_SCRIPT_URL, {
       method: 'POST',
       headers: {'Content-Type': 'text/plain;charset=utf-8'}, // evita preflight CORS contra Apps Script
       body: JSON.stringify(body)
     });
-    return res.json();
   }
 
   let fotosPorFamilia = {};
@@ -931,7 +948,12 @@
     // Un solo pedido para modelos y otro para fotos (en paralelo), en vez de
     // pedir la ficha completa por cada una de las 110 tarjetas.
     const [data, fotos] = await Promise.all([ apiPost({ action: 'modelos', pin: sesion ? sesion.pin : '' }), api('fotos') ]);
-    if (data.error) { modelGrid.innerHTML = `<div class="loading">Error cargando catálogo: ${data.error}</div>`; return; }
+    if (data.error || !Array.isArray(data)) {
+      modelGrid.innerHTML = `<div class="loading">No se pudo cargar el catálogo: ${data.error || 'respuesta inesperada'}
+        <br><button class="btn-mini" id="reintentarCatalogo" style="margin-top:10px;">Reintentar</button></div>`;
+      document.getElementById('reintentarCatalogo').onclick = () => { modelGrid.innerHTML = `<div class="loading">Cargando catálogo…</div>`; init(); };
+      return;
+    }
     modelos = data;
     fotosPorFamilia = fotos.error ? {} : fotos;
     renderMarcaTabs();
