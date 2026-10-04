@@ -953,7 +953,10 @@
   async function init() {
     // Un solo pedido para modelos y otro para fotos (en paralelo), en vez de
     // pedir la ficha completa por cada una de las 110 tarjetas.
-    const [data, fotos] = await Promise.all([ apiPost({ action: 'modelos', pin: sesion ? sesion.pin : '' }), api('fotos') ]);
+    // Las fotos van aparte y no frenan el catálogo: si Apps Script tarda con
+    // las fotos, los modelos se muestran igual y las fotos aparecen después.
+    const fotosPromise = api('fotos');
+    const data = await apiPost({ action: 'modelos', pin: sesion ? sesion.pin : '' });
     if (data.error || !Array.isArray(data)) {
       modelGrid.innerHTML = `<div class="loading">No se pudo cargar el catálogo: ${data.error || 'respuesta inesperada'}
         <br><button class="btn-mini" id="reintentarCatalogo" style="margin-top:10px;">Reintentar</button></div>`;
@@ -961,10 +964,14 @@
       return;
     }
     modelos = data;
-    fotosPorFamilia = fotos.error ? {} : fotos;
     renderMarcaTabs();
     renderCatTabs();
     renderModelGrid();
+    fotosPromise.then(fotos => {
+      if (!fotos || fotos.error) return;
+      fotosPorFamilia = fotos;
+      renderModelGrid();
+    });
   }
 
   // Al cambiar de sesión: el catálogo trae o no costos según el rol, y
