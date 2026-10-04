@@ -1391,6 +1391,16 @@
       const res = await apiPost({ action: 'guardar_cliente', cliente, pin: sesion ? sesion.pin : '' });
       if (res.error) { msg.textContent = res.error; return; }
       cliente.id = res.id;
+      const yaEstaba = clientesCache.find(c => c.id === res.id);
+      if (res.existente) { if (res.nombre) cliente.nombre = res.nombre; }
+      if (yaEstaba) {
+        clienteSeleccionado = yaEstaba;
+        clienteSelect.value = yaEstaba.id;
+        clienteNuevoBox.style.display = 'none';
+        msg.textContent = '';
+        alert('Ese CUIT ya estaba cargado (base compartida con thermowood): se usa "' + yaEstaba.nombre + '".');
+        return;
+      }
       clientesCache.push(cliente);
       clienteSeleccionado = cliente;
       const opt = document.createElement('option');
@@ -1428,6 +1438,15 @@
       const res = await apiPost({ action: 'guardar_estudio', estudio, pin: sesion ? sesion.pin : '' });
       if (res.error) { msg.textContent = res.error; return; }
       estudio.id = res.id;
+      const estYaEstaba = estudiosCache.find(e => e.id === res.id);
+      if (estYaEstaba) {
+        estudioSeleccionado = estYaEstaba;
+        estudioSelect.value = estYaEstaba.id;
+        estudioNuevoBox.style.display = 'none';
+        msg.textContent = '';
+        estudioSelect.onchange();
+        return;
+      }
       estudiosCache.push(estudio);
       estudioSeleccionado = estudio;
       const opt = document.createElement('option');
@@ -1546,7 +1565,7 @@
         email: (document.getElementById('clienteEmailNuevo')||{}).value || '',
       };
       const res = await apiPost({ action: 'guardar_cliente', cliente, pin: sesion.pin });
-      if (!res.error) { cliente.id = res.id; clienteSeleccionado = cliente; }
+      if (!res.error) { cliente.id = res.id; if (res.existente && res.nombre) cliente.nombre = res.nombre; clienteSeleccionado = cliente; }
     }
     const nombreEstudioNuevoEl = document.getElementById('estudioNombreNuevo');
     if (!estudioSeleccionado.id && nombreEstudioNuevoEl && nombreEstudioNuevoEl.value.trim()) {
