@@ -762,7 +762,12 @@
 
   async function renderGerenciaPanel() {
     const panel = document.getElementById('gerenciaPanel');
-    configGlobal = await api('config_global', { pin: sesion.pin });
+    // Una sola vez por sesión (antes se pedía 3 veces por carga) y por POST,
+    // para que el PIN no quede en la URL. "Guardar" ya actualiza configGlobal.
+    if (!(configGlobal && !configGlobal.error && configGlobalPin === sesion.pin)) {
+      configGlobal = await apiPost({ action: 'config_global', pin: sesion.pin });
+      configGlobalPin = sesion.pin;
+    }
     if (configGlobal.error) { panel.style.display = 'none'; return; }
     panel.style.display = 'flex';
     panel.className = 'gerencia-panel';
@@ -912,6 +917,7 @@
   }
   let sesion = null; // {pin, nombre, rol} — se guarda en localStorage tras login exitoso
   let configGlobal = null;
+  let configGlobalPin = null;
   let clientesCache = null;
   let estudiosCache = null;
   let clienteSeleccionado = {}; // {id, nombre, cuit, telefono, email}
