@@ -92,6 +92,11 @@
     padding:4px 10px; font-size:11px; font-weight:700; cursor:pointer;
   }
   .cot-approve-btn:hover{ opacity:.85; }
+  .cot-rent-btn{
+    background:transparent; color:var(--ember-bright); border:1px solid var(--ember); border-radius:6px;
+    padding:4px 8px; font-size:11px; cursor:pointer; margin-right:6px;
+  }
+  .cot-rent-btn:disabled{ opacity:.5; cursor:not-allowed; }
   .cot-approve-btn:disabled{ opacity:.4; cursor:not-allowed; }
   .rol-badge{
     font-size:11px; font-weight:700; letter-spacing:0.5px; text-transform:uppercase;
@@ -295,6 +300,11 @@
   .com-row input[type=number]{ width:80px; }
   .com-check{ display:flex; align-items:center; gap:8px; font-size:13px; color:var(--birch); cursor:pointer; margin:6px 0; }
   .com-check input{ width:16px; height:16px; accent-color:var(--ember); }
+  .box-interno{ border:1px dashed var(--line); border-radius:8px; padding:10px 12px; margin:12px 0; }
+  .box-interno .box-title{ font-size:10.5px; text-transform:uppercase; letter-spacing:.6px; color:#C9A227; font-weight:700; margin-bottom:6px; }
+  .box-rent{ border-color:#B9943E; }
+  .box-rent .total-rent{ border-top:1px dashed var(--line); margin-top:6px; padding-top:6px; font-weight:700; }
+  .rent-nota{ font-size:10.5px; color:var(--birch-dim); margin-top:6px; }
   .btn-pct{ background:var(--stone-2); border:1px solid var(--line); color:var(--birch-dim); border-radius:6px; padding:4px 8px; font-size:11px; cursor:pointer; }
 
   /* --- Presupuesto imprimible --- */
@@ -500,13 +510,16 @@
         <span>${c.marca==='KOLO'?'Kolo · ':''}${c.modelo}${c.incluye_colocacion?' · colocación':''}</span>
         <span class="precio">US$ ${Number(totalSinIva||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</span>
         <span><span class="cot-estado ${c.estado}">${c.estado}</span></span>
-        <span>${sesion.rol==='gerencia' && c.estado==='enviada' ? `<button class="cot-approve-btn" data-id="${c.id}">Aprobar</button>` : ''}</span>
+        <span>${sesion.rol==='gerencia' ? `<button class="cot-rent-btn" data-id="${c.id}" data-numero="${c.numero || ''}" title="Manda a Nicolás costo, comisiones y margen — NO aprueba ni crea obra">💰 Rentabilidad</button>` : ''}${sesion.rol==='gerencia' && c.estado==='enviada' ? `<button class="cot-approve-btn" data-id="${c.id}">Aprobar</button>` : ''}</span>
       </div>`;
     }).join('');
     listEl.innerHTML = header + filas;
 
     listEl.querySelectorAll('.cot-row.clickable').forEach(row => {
-      row.onclick = (e) => { if (!e.target.classList.contains('cot-approve-btn')) verDetalleCotizacion(row.dataset.id); };
+      row.onclick = (e) => { if (!e.target.classList.contains('cot-approve-btn') && !e.target.classList.contains('cot-rent-btn')) verDetalleCotizacion(row.dataset.id); };
+    });
+    listEl.querySelectorAll('.cot-rent-btn').forEach(btn => {
+      btn.onclick = (e) => { e.stopPropagation(); enviarRentabilidad(btn.dataset.id, btn.dataset.numero, btn); };
     });
     listEl.querySelectorAll('.cot-approve-btn').forEach(btn => {
       btn.onclick = async (e) => {
@@ -517,6 +530,31 @@
         renderListaCotizaciones();
       };
     });
+  }
+
+  // ★ Informe de rentabilidad preliminar — espejo de enviarRentabilidad() del
+  // cotizador de thermowood: le manda a Nicolás (+ Franco como testigo) costo,
+  // comisiones y margen de una cotización YA GUARDADA, sin aprobarla.
+  async function enviarRentabilidad(id, numero, btn) {
+    if (!confirm('¿Mandarle a Nicolás el informe de rentabilidad de ' + (numero || id) + '?\n\nNo aprueba la cotización ni crea ninguna obra — es solo informativo.')) return;
+    const textoOriginal = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Enviando…';
+    try {
+      const r = await apiPost({ action: 'enviar_rentabilidad', cotizacion_id: id, pin: sesion.pin });
+      if (r.error || !r.ok) { alert('Error: ' + (r.error || 'no se pudo enviar')); return; }
+      btn.textContent = '✓ Enviado';
+      const banner = document.createElement('div');
+      banner.className = 'status-msg status-ok';
+      banner.textContent = 'Informe de rentabilidad de ' + (numero || id) + ' enviado a ' + r.destinatario +
+        ' — margen bruto USD ' + Number(r.margenBruto).toFixed(2) + ' (' + Math.round(r.margenPct * 1000) / 10 + '%)';
+      document.getElementById('cotizacionesList').prepend(banner);
+      return;
+    } catch (e) {
+      alert('Error de conexión');
+    } finally {
+      btn.disabled = false;
+      if (btn.textContent === 'Enviando…') btn.textContent = textoOriginal;
+    }
   }
 
   async function verDetalleCotizacion(id) {
@@ -546,14 +584,14 @@
         <div class="line"><span class="lbl">Tipo de cambio</span><span class="val">${c.tipo_cambio}</span></div>`}
         <div class="line"><span class="lbl">Costo nacionalizado (USD)</span><span class="val">${fmtUSD(c.costo_nacionalizado_usd)}</span></div>
         <div class="line"><span class="lbl">Markup</span><span class="val">${fmtPct(c.markup_pct)}</span></div>
-        <div class="line"><span class="lbl">Margen bruto</span><span class="val">${fmtUSD(c.margen_bruto_usd)} (${fmtPct(c.margen_bruto_pct)})</span></div>
+        <div class="line"><span class="lbl">Margen bruto (antes de comisiones)</span><span class="val">${fmtUSD(c.margen_bruto_usd)} (${fmtPct(c.margen_bruto_pct)})</span></div>
         <div class="gauge-wrap">
           <div class="gauge-label"><span>Margen bruto</span><span>piso vigente ${fmtPct(c.margen_minimo_pct_actual)}</span></div>
           <div class="gauge"><div class="floor-mark" style="left:${floorPct}%"></div><div class="fill" style="width:${gaugePct}%; background:${margenColor};"></div></div>
           <div class="gauge-pct" style="color:${margenColor}">${fmtPct(c.margen_bruto_pct)}</div>
         </div>
-        ${lineasDescuentos(c)}
-        <div class="line"><span class="lbl">Margen neto final</span><span class="val">${fmtUSD(c.margen_neto_usd)} (${fmtPct(c.margen_neto_pct)})</span></div>
+        ${boxInterno(c)}
+        ${boxRentabilidad(c.rentabilidad)}
       `;
     }
 
@@ -571,6 +609,7 @@
       ${costosHtml}
       <div style="display:flex; gap:10px; margin-top:18px;">
         ${esGerencia && c.estado==='enviada' ? `<button class="btn btn-primary" id="aprobarDetalleBtn" style="margin-top:0;">Aprobar</button>` : ''}
+        ${esGerencia ? `<button class="btn btn-secondary" id="rentDetalleBtn" style="margin-top:0;">💰 Rentabilidad</button>` : ''}
         <button class="btn btn-secondary" id="descargarBtn" style="margin-top:0;">Descargar presupuesto</button>
       </div>
     `;
@@ -584,6 +623,8 @@
       };
     }
     document.getElementById('descargarBtn').onclick = () => descargarPresupuesto(c);
+    const rentBtn = document.getElementById('rentDetalleBtn');
+    if (rentBtn) rentBtn.onclick = () => enviarRentabilidad(id, c.numero, rentBtn);
   }
 
   async function descargarPresupuesto(c, modeloNombreOverride, clienteNombreOverride) {
@@ -862,15 +903,16 @@
 
   // Comisiones e IIBB — mismo criterio que el cotizador de thermowood
   // (listasdeprecios/cotizador.html): vendedor con su % (Christian 8%,
-  // Franco 0%, editable, botón rápido 3%), comisión de arquitecto solo si se
-  // tilda (toma el % del estudio elegido), e IIBB imputable o no.
+  // Franco 0%, editable, botón rápido 3%) y comisión de arquitecto solo si se
+  // tilda (toma el % del estudio elegido). IIBB no entra en el cotizador:
+  // solo como referencia en el informe de rentabilidad.
   const VENDEDORES = ['Franco Faggioni', 'Christian Holler'];
   const defaultComVend = v => v === 'Christian Holler' ? 8 : 0;
   let comis = null;
   function comisEstado() {
     if (!comis) {
       const vend = (sesion && sesion.nombre === 'Franco Faggioni') ? 'Franco Faggioni' : 'Christian Holler';
-      comis = { vendedor: vend, vendPct: defaultComVend(vend), arq: false, arqPct: null, iibb: true };
+      comis = { vendedor: vend, vendPct: defaultComVend(vend), arq: false, arqPct: null };
     }
     return comis;
   }
@@ -882,7 +924,6 @@
       aplica_comision_arquitecto: k.arq,
       comision_arquitecto_pct: k.arqPct, // null -> el backend usa el % del estudio elegido (o 5%)
       estudio_id: estudioSeleccionado.id || null,
-      aplica_iibb: k.iibb,
     };
   }
 
@@ -1100,7 +1141,7 @@
         ${markupOverride != null ? `<a href="#" id="markupResetLink" style="font-size:12px;">volver al ${(configGlobal ? configGlobal.markup_default_pct*100 : 80).toFixed(0)}%</a>` : ''}
       </div>` : ''}
       <div class="line"><span class="lbl">PVP (markup ${fmtPct(c.markup_pct)})</span><span class="val">${fmtUSD(c.pvp_usd)}</span></div>
-      <div class="line"><span class="lbl">Margen bruto</span><span class="val">${fmtUSD(c.margen_bruto_usd)} (${fmtPct(c.margen_bruto_pct)})</span></div>
+      <div class="line"><span class="lbl">Margen bruto (antes de comisiones)</span><span class="val">${fmtUSD(c.margen_bruto_usd)} (${fmtPct(c.margen_bruto_pct)})</span></div>
 
       <div class="gauge-wrap">
         <div class="gauge-label"><span>Margen bruto</span><span>piso ${fmtPct(c.margen_minimo_pct)}</span></div>
@@ -1113,8 +1154,8 @@
       ${c.margen_bajo_el_piso ? `<div class="warn-box">Margen por debajo del piso de ${fmtPct(c.margen_minimo_pct)}. Guardar esta cotización va a requerir aprobación de gerencia.</div>` : ''}
 
       <div class="divider"></div>
-      ${lineasDescuentos(c)}
-      <div class="line"><span class="lbl">Margen neto final</span><span class="val">${fmtUSD(c.margen_neto_usd)} (${fmtPct(c.margen_neto_pct)})</span></div>
+      ${boxInterno(c)}
+      ${boxRentabilidad(c.rentabilidad)}
       <div class="divider"></div>
       ${bloquePrecioFinal(c)}
 
@@ -1248,10 +1289,6 @@
           <button type="button" class="btn-pct" id="vendPct3" title="Comisión de 3% (se elige a mano)">3%</button>
         </div>
       </div>
-      ${esGerencia() ? `
-      <label class="com-check">
-        <input type="checkbox" id="iibbCheck" ${k.iibb?'checked':''}> Imputar IIBB${configGlobal && configGlobal.iibb_pct!=null ? ' ('+fmtPct(configGlobal.iibb_pct)+')' : ''} <span class="interno-tag">(interno)</span>
-      </label>` : ''}
     `;
   }
 
@@ -1263,7 +1300,6 @@
     on('vendSelect', 'onchange', e => { k.vendedor = e.target.value; k.vendPct = defaultComVend(k.vendedor); recalcular(); });
     on('vendPctInput', 'onchange', e => { k.vendPct = Number(e.target.value) || 0; recalcular(); });
     on('vendPct3', 'onclick', () => { k.vendPct = 3; recalcular(); });
-    on('iibbCheck', 'onchange', e => { k.iibb = e.target.checked; recalcular(); });
   }
 
   function wireDatosCliente() {
@@ -1351,14 +1387,39 @@
     return datosEntrega;
   }
 
-  // Líneas internas de descuentos al margen, como el boxInterno de thermowood:
-  // si no se imputa, muestra "—" en vez del monto.
-  function lineasDescuentos(c, conIibb = true) {
-    const linea = (lbl, aplica, monto) =>
-      `<div class="line"><span class="lbl">${lbl}</span><span class="val">${aplica && monto > 0 ? '− ' + fmtUSD(monto) : '—'}</span></div>`;
-    return (conIibb ? linea(`IIBB${c.aplica_iibb === false ? ' (no imputado)' : (c.iibb_pct != null ? ' (' + fmtPct(c.iibb_pct) + ')' : '')}`, c.aplica_iibb !== false, c.iibb_usd) : '') +
-      linea(`Comisión arquitecto (${c.aplica_comision_arquitecto === false ? 'no imputada' : (c.comision_arquitecto_pct != null ? c.comision_arquitecto_pct + '%' : '')})`, c.aplica_comision_arquitecto !== false, c.com_arquitecto_usd) +
-      linea(`Comisión vendedor${c.vendedor_nombre ? ' — ' + c.vendedor_nombre : ''} (${c.comision_vendedor_pct != null ? c.comision_vendedor_pct : 0}%)`, true, c.com_vendedor_usd);
+  // Espejo del cotizador de thermowood (listasdeprecios/cotizador.html):
+  // boxInterno = comisiones + Neto Kokkai (lo ven todos los logueados);
+  // boxRentReal = "Rentabilidad real — igual al informe que recibe Nico"
+  // (solo gerencia), con las mismas filas que mailTablaRentabilidad_.
+  function boxInterno(c) {
+    const linea = (lbl, monto) =>
+      `<div class="line"><span class="lbl">${lbl}</span><span class="val">${monto > 0 ? '— ' + fmtUSD(monto) : '—'}</span></div>`;
+    const arqPct = c.aplica_comision_arquitecto === false ? 0 : (c.comision_arquitecto_pct || 0);
+    const neto = (c.pvp_usd || 0) - (c.com_arquitecto_usd || 0) - (c.com_vendedor_usd || 0);
+    return `
+      <div class="box-interno">
+        <div class="box-title">Solo interno — no va al cliente</div>
+        ${linea(`Comisión arquitecto (${arqPct}%)`, c.com_arquitecto_usd)}
+        ${linea(`Comisión vendedor${c.vendedor_nombre ? ' — ' + c.vendedor_nombre : ''} (${c.comision_vendedor_pct || 0}%)`, c.com_vendedor_usd)}
+        <div class="line"><span class="lbl">Neto Kokkai</span><span class="val">${fmtUSD(neto)}</span></div>
+      </div>`;
+  }
+
+  function boxRentabilidad(r) {
+    if (!r) return '';
+    const costo = (lbl, monto) => monto ? `<div class="line"><span class="lbl">${lbl}</span><span class="val" style="color:var(--rust-warn);">− ${fmtUSD(Math.abs(monto))}</span></div>` : '';
+    return `
+      <div class="box-interno box-rent">
+        <div class="box-title">💰 Rentabilidad real — igual al informe que recibe Nico (solo Gerencia)</div>
+        <div class="line"><span class="lbl">Ingreso total (precio del sauna, sin IVA)</span><span class="val">${fmtUSD(r.total)}</span></div>
+        ${costo('Costo del sauna' + (r.marcaNombre ? ' (' + r.marcaNombre + ')' : ''), r.costoProducto)}
+        ${costo('Nacionalización' + (r.coefNacionalizacion != null ? ' (+' + fmtPct(r.coefNacionalizacion) + ')' : ''), r.costoNacionalizacion)}
+        ${costo('Comisión arquitecto/estudio', r.comisionArq)}
+        ${costo('Comisión vendedor', r.comVendMonto)}
+        <div class="line total-rent"><span class="lbl">MARGEN BRUTO</span><span class="val" style="color:${r.margenBruto >= 0 ? 'var(--pine-bright)' : 'var(--rust-warn)'};">${fmtUSD(r.margenBruto)} (${fmtPct(r.margenPct)})</span></div>
+        ${r.iibbPct ? `<div class="rent-nota">Referencia IIBB (${fmtPct(r.iibbPct)} s/ ingreso): − ${fmtUSD(r.iibbRef)} → margen después de IIBB ${fmtUSD(r.margenTrasIibb)} (${fmtPct(r.margenTrasIibbPct)})</div>` : ''}
+        <div class="rent-nota">No incluye IVA/Ganancias ni estructura de la empresa — mismo criterio que el informe que recibe Nico. La colocación no entra (su costo no está cargado).</div>
+      </div>`;
   }
 
   function bloquePrecioFinal(c) {
@@ -1389,9 +1450,7 @@
       <div class="divider"></div>
       <div class="line"><span class="lbl">Precio del sauna</span><span class="val">${fmtUSD(c.pvp_usd)}</span></div>
       ${bloquePrecioFinal(c)}
-      ${sesion ? `<div class="divider"></div>
-      <div class="line" style="font-size:11px; opacity:.7;"><span class="lbl">Solo interno — no va al cliente</span></div>
-      ${lineasDescuentos(c, false)}` : ''}
+      ${sesion ? boxInterno(c) : ''}
 
       ${datosClienteHtml}
       <button class="btn btn-primary" id="guardarBtn">Guardar cotización</button>
