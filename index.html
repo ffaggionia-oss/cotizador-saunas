@@ -1480,7 +1480,6 @@
         ${costo('Comisión arquitecto/estudio', r.comisionArq)}
         ${costo('Comisión vendedor', r.comVendMonto)}
         <div class="line total-rent"><span class="lbl">MARGEN BRUTO</span><span class="val" style="color:${r.margenBruto >= 0 ? 'var(--pine-bright)' : 'var(--rust-warn)'};">${fmtUSD(r.margenBruto)} (${fmtPct(r.margenPct)})</span></div>
-        ${r.iibbPct ? `<div class="rent-nota">Referencia IIBB (${fmtPct(r.iibbPct)} s/ ingreso): − ${fmtUSD(r.iibbRef)} → margen después de IIBB ${fmtUSD(r.margenTrasIibb)} (${fmtPct(r.margenTrasIibbPct)})</div>` : ''}
         <div class="rent-nota">No incluye IVA/Ganancias ni estructura de la empresa — mismo criterio que el informe que recibe Nico. La colocación no entra (su costo no está cargado).</div>
       </div>`;
   }
