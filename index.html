@@ -432,7 +432,11 @@
   const marcaDe = m => (m && m.marca) || 'AUROOM';
   const precioBase = m => marcaDe(m) === 'KOLO' ? m.precio_base_usd : m.precio_base_eur;
   const fmtOrigen = (n, moneda) => moneda === 'USD' ? fmtUSD(n) : fmtEUR(n);
-  const precioBaseTxt = m => marcaDe(m) === 'KOLO' ? `${fmtUSD(m.precio_base_usd)} costo Kolo` : `${fmtEUR(m.precio_base_eur)} EXW`;
+  const precioBaseTxt = m => {
+    const p = precioBase(m);
+    if (p === undefined || p === null || p === '') return 'cargando precio…'; // catálogo guardado (sin costos) mientras llega el real
+    return marcaDe(m) === 'KOLO' ? `${fmtUSD(p)} costo Kolo` : `${fmtEUR(p)} EXW`;
+  };
   const margenDeMarkup = mk => mk / (1 + mk); // margen bruto sobre PVP que da un markup sobre costo
   const puedeMarkup = () => !!(sesion && sesion.puede_editar_markup);
 
@@ -956,7 +960,28 @@
     // Las fotos van aparte y no frenan el catálogo: si Apps Script tarda con
     // las fotos, los modelos se muestran igual y las fotos aparecen después.
     const fotosPromise = api('fotos');
+    // Apps Script a veces tarda 20-30 s: se muestra al instante el último
+    // catálogo guardado en este navegador (SIN costos) y se actualiza cuando
+    // llega la respuesta. Para gerencia los precios aparecen al llegar.
+    const CACHE_KEY = 'kokkai_sauna_catalogo_v1';
+    let mostradoDesdeCache = false;
+    try {
+      const cache = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+      const fotosCache = JSON.parse(localStorage.getItem(CACHE_KEY + '_fotos') || 'null');
+      if (Array.isArray(cache) && cache.length && !modelos.length) {
+        modelos = cache; if (fotosCache) fotosPorFamilia = fotosCache;
+        renderMarcaTabs(); renderCatTabs(); renderModelGrid();
+        mostradoDesdeCache = true;
+      }
+    } catch (e) {}
     const data = await apiPost({ action: 'modelos', pin: sesion ? sesion.pin : '' });
+    if ((data.error || !Array.isArray(data)) && mostradoDesdeCache) return; // queda el catálogo guardado
+    if (Array.isArray(data)) {
+      try {
+        const sinCostos = data.map(m => { const c = Object.assign({}, m); delete c.precio_base_eur; delete c.precio_base_usd; delete c.fuente; return c; });
+        localStorage.setItem(CACHE_KEY, JSON.stringify(sinCostos));
+      } catch (e) {}
+    }
     if (data.error || !Array.isArray(data)) {
       modelGrid.innerHTML = `<div class="loading">No se pudo cargar el catálogo: ${data.error || 'respuesta inesperada'}
         <br><button class="btn-mini" id="reintentarCatalogo" style="margin-top:10px;">Reintentar</button></div>`;
@@ -964,12 +989,15 @@
       return;
     }
     modelos = data;
+    if (modeloSeleccionado) modeloSeleccionado = modelos.find(m => String(m.id) === String(modeloSeleccionado.id)) || modeloSeleccionado;
     renderMarcaTabs();
     renderCatTabs();
     renderModelGrid();
+    if (mostradoDesdeCache && modeloSeleccionado && calcActual && calcActual.vista === 'gerencia') renderSummaryGerencia(calcActual);
     fotosPromise.then(fotos => {
       if (!fotos || fotos.error) return;
       fotosPorFamilia = fotos;
+      try { localStorage.setItem('kokkai_sauna_catalogo_v1_fotos', JSON.stringify(fotos)); } catch (e) {}
       renderModelGrid();
     });
   }
