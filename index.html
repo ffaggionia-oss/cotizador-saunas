@@ -438,6 +438,7 @@
     sesion = { pin, nombre: r.nombre, rol: r.rol, puede_editar_markup: !!r.puede_editar_markup };
     localStorage.setItem('kokkai_sauna_sesion', JSON.stringify(sesion));
     mostrarSesion();
+    if (modelos.length) recargarDatosDeSesion();
   }
   pinBtn.onclick = intentarLogin;
   pinInput.addEventListener('keydown', e => { if (e.key === 'Enter') intentarLogin(); });
@@ -449,7 +450,7 @@
     localStorage.removeItem('kokkai_sauna_sesion');
     document.getElementById('gerenciaPanel').style.display = 'none';
     mostrarSesion();
-    if (modeloSeleccionado) recalcular();
+    if (modelos.length) recargarDatosDeSesion();
   };
 
   const cotizacionesOverlay = document.getElementById('cotizacionesOverlay');
@@ -852,13 +853,29 @@
   async function init() {
     // Un solo pedido para modelos y otro para fotos (en paralelo), en vez de
     // pedir la ficha completa por cada una de las 110 tarjetas.
-    const [data, fotos] = await Promise.all([ api('modelos'), api('fotos') ]);
+    const [data, fotos] = await Promise.all([ apiPost({ action: 'modelos', pin: sesion ? sesion.pin : '' }), api('fotos') ]);
     if (data.error) { modelGrid.innerHTML = `<div class="loading">Error cargando catálogo: ${data.error}</div>`; return; }
     modelos = data;
     fotosPorFamilia = fotos.error ? {} : fotos;
     renderMarcaTabs();
     renderCatTabs();
     renderModelGrid();
+  }
+
+  // Al cambiar de sesión: el catálogo trae o no costos según el rol, y
+  // clientes/estudios dependen del PIN -> se vuelven a pedir.
+  async function recargarDatosDeSesion() {
+    clientesCache = null; estudiosCache = null;
+    const data = await apiPost({ action: 'modelos', pin: sesion ? sesion.pin : '' });
+    if (data.error) return;
+    modelos = data;
+    if (modeloSeleccionado) modeloSeleccionado = modelos.find(m => String(m.id) === String(modeloSeleccionado.id)) || modeloSeleccionado;
+    renderModelGrid();
+    if (modeloSeleccionado) {
+      const ficha = await apiPost({ action: 'ficha', modelo_id: modeloSeleccionado.id, pin: sesion ? sesion.pin : '' });
+      if (!ficha.error) { gadgetsDisponibles = ficha.gadgets || []; renderFicha(ficha); renderGadgets(); }
+      recalcular();
+    }
   }
 
   const modelosDeMarca = () => modelos.filter(m => marcaDe(m) === marcaFiltro);
@@ -927,7 +944,7 @@
     fichaBox.innerHTML = `<div class="loading" style="padding:20px;">Cargando ficha…</div>`;
     fichaSection.scrollIntoView({behavior:'smooth', block:'start'});
 
-    const ficha = await api('ficha', {modelo_id: id});
+    const ficha = await apiPost({ action: 'ficha', modelo_id: id, pin: sesion ? sesion.pin : '' });
     gadgetsDisponibles = ficha.gadgets || [];
     renderFicha(ficha);
     renderGadgets();
@@ -1108,8 +1125,9 @@
    * vista gerencia y en la vista vendedor -- estos datos no son costos.
    */
   async function cargarClientesYEstudios() {
-    if (clientesCache === null) clientesCache = await api('clientes');
-    if (estudiosCache === null) estudiosCache = await api('estudios');
+    if (!sesion) { clientesCache = []; estudiosCache = []; return; }
+    if (clientesCache === null) clientesCache = await apiPost({ action: 'clientes', pin: sesion.pin });
+    if (estudiosCache === null) estudiosCache = await apiPost({ action: 'estudios', pin: sesion.pin });
   }
 
   async function renderDatosCliente() {
@@ -1121,7 +1139,7 @@
       <div class="section-label" style="margin-top:22px;">Cliente y condiciones</div>
 
       <div class="cliente-field">
-        <label>Cliente</label>
+        <label>Cliente${sesion ? '' : ' — iniciá sesión para ver la lista de clientes'}</label>
         <select id="clienteSelect">
           <option value="">— Elegir cliente existente —</option>
           ${clientes.map(c => `<option value="${c.id}">${c.nombre}${c.cuit?' ('+c.cuit+')':''}</option>`).join('')}
@@ -1145,7 +1163,7 @@
         <label>Estudio de arquitectura (opcional)</label>
         <select id="estudioSelect">
           <option value="">— Sin estudio —</option>
-          ${estudios.map(e => `<option value="${e.id}">${e.nombre} (${e.comisionPctDefault}%)</option>`).join('')}
+          ${estudios.map(e => `<option value="${e.id}">${e.nombre}${e.comisionPctDefault != null && e.comisionPctDefault !== '' ? ' (' + e.comisionPctDefault + '%)' : ''}</option>`).join('')}
           <option value="__nuevo__">+ Estudio nuevo</option>
         </select>
       </div>
