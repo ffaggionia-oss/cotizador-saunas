@@ -514,7 +514,7 @@
         <span>${c.marca==='KOLO'?'Kolo · ':''}${c.modelo}${c.incluye_colocacion?' · colocación':''}</span>
         <span class="precio">US$ ${Number(totalSinIva||0).toLocaleString('es-AR',{maximumFractionDigits:0})}</span>
         <span><span class="cot-estado ${c.estado}">${c.estado}</span></span>
-        <span>${sesion.rol==='gerencia' ? `<button class="cot-rent-btn" data-id="${c.id}" data-numero="${c.numero || ''}" title="Manda a Nicolás costo, comisiones y margen — NO aprueba ni crea obra">💰 Rentabilidad</button>` : ''}${sesion.rol==='gerencia' && c.estado==='enviada' ? `<button class="cot-approve-btn" data-id="${c.id}">Aprobar</button>` : ''}</span>
+        <span>${sesion.rol==='gerencia' ? `<button class="cot-rent-btn" data-id="${c.id}" data-numero="${c.numero || ''}" title="Manda a Nicolás costo, comisiones y margen — NO aprueba ni crea obra">💰 Rentabilidad</button>` : ''}${puedeAprobar() && c.estado==='enviada' ? `<button class="cot-approve-btn" data-id="${c.id}">Aprobar</button>` : ''}</span>
       </div>`;
     }).join('');
     listEl.innerHTML = header + filas;
@@ -612,12 +612,12 @@
       ${bloquePrecioFinal(c)}
       ${costosHtml}
       <div style="display:flex; gap:10px; margin-top:18px;">
-        ${esGerencia && c.estado==='enviada' ? `<button class="btn btn-primary" id="aprobarDetalleBtn" style="margin-top:0;">Aprobar</button>` : ''}
+        ${puedeAprobar() && c.estado==='enviada' ? `<button class="btn btn-primary" id="aprobarDetalleBtn" style="margin-top:0;">Aprobar</button>` : ''}
         ${esGerencia ? `<button class="btn btn-secondary" id="rentDetalleBtn" style="margin-top:0;">💰 Rentabilidad</button>` : ''}
         <button class="btn btn-secondary" id="descargarBtn" style="margin-top:0;">Descargar presupuesto</button>
       </div>
     `;
-    if (esGerencia && c.estado==='enviada') {
+    if (puedeAprobar() && c.estado==='enviada') {
       document.getElementById('aprobarDetalleBtn').onclick = async () => {
         const btn = document.getElementById('aprobarDetalleBtn');
         btn.disabled = true; btn.textContent = 'Aprobando…';
@@ -933,12 +933,16 @@
   // Franco 0%, editable, botón rápido 3%) y comisión de arquitecto solo si se
   // tilda (toma el % del estudio elegido). IIBB no entra en el cotizador:
   // solo como referencia en el informe de rentabilidad.
-  const VENDEDORES = ['Franco Faggioni', 'Christian Holler'];
+  const VENDEDORES = ['Franco Faggioni', 'Christian Holler', 'Sandra Molina'];
+  // ★ 2026-10-07: Sandra vende sin comisión (el backend también la fuerza a 0).
+  const SIN_COMISION = ['Sandra Molina'];
   const defaultComVend = v => v === 'Christian Holler' ? 8 : 0;
+  // Gerencia aprueba todo; Sandra (compras_admin) aprueba las suyas (el listado ya le muestra solo esas).
+  const puedeAprobar = () => !!(sesion && (sesion.rol === 'gerencia' || sesion.rol === 'compras_admin'));
   let comis = null;
   function comisEstado() {
     if (!comis) {
-      const vend = (sesion && sesion.nombre === 'Franco Faggioni') ? 'Franco Faggioni' : 'Christian Holler';
+      const vend = (sesion && VENDEDORES.indexOf(sesion.nombre) !== -1) ? sesion.nombre : 'Franco Faggioni';
       comis = { vendedor: vend, vendPct: defaultComVend(vend), arq: false, arqPct: null };
     }
     return comis;
@@ -1348,8 +1352,8 @@
         <label>Vendedor · % comisión <span class="interno-tag">(interno, no va al PDF)</span></label>
         <div class="com-row">
           <select id="vendSelect">${VENDEDORES.map(v => `<option ${v===k.vendedor?'selected':''}>${v}</option>`).join('')}</select>
-          <input type="number" id="vendPctInput" min="0" max="100" step="0.5" value="${k.vendPct}"> %
-          <button type="button" class="btn-pct" id="vendPct3" title="Comisión de 3% (se elige a mano)">3%</button>
+          <input type="number" id="vendPctInput" min="0" max="100" step="0.5" value="${SIN_COMISION.indexOf(k.vendedor)!==-1 ? 0 : k.vendPct}" ${SIN_COMISION.indexOf(k.vendedor)!==-1?'disabled':''}> %
+          <button type="button" class="btn-pct" id="vendPct3" title="Comisión de 3% (se elige a mano)" ${SIN_COMISION.indexOf(k.vendedor)!==-1?'disabled':''}>3%</button>
         </div>
       </div>
     `;
